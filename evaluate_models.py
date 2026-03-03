@@ -30,7 +30,7 @@ class ModelEvaluator:
     CLASS_NAMES = ['Fresh', 'Less Fresh', 'Starting to Rot', 'Rotten']
     COLORS = ['#2ecc71', '#f39c12', '#e67e22', '#e74c3c']  # Green, Yellow, Orange, Red
     
-    def __init__(self, models_dir='results', data_dir='data/processed', output_dir='evaluation_results'):
+    def __init__(self, models_dir='backend/results', data_dir='data/processed', output_dir='evaluation_results'):
         self.models_dir = Path(models_dir)
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
@@ -393,7 +393,7 @@ class ModelEvaluator:
 
 if __name__ == '__main__':
     evaluator = ModelEvaluator(
-        models_dir='results',
+        models_dir='backend/results',
         data_dir='data/processed',
         output_dir='evaluation_results'
     )
