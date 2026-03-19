@@ -84,9 +84,9 @@ def detect_and_extract_regions(image: np.ndarray) -> dict:
     eye_result = eye_detector.detect_and_extract(image)
     print(f"[MAIN] Eye detection result: {eye_result['eye_detected']}")
     
-    # Detect gills
+    # Detect gills (with eye anchoring for anatomical accuracy)
     print("[MAIN] Calling gills detector...")
-    gill_result = gills_detector.detect_and_extract(image)
+    gill_result = gills_detector.detect_and_extract(image, eye_box=eye_result['eye_bbox'])
     print(f"[MAIN] Gill detection result: {gill_result['gill_detected']}")
     
     # Combine results
@@ -120,8 +120,7 @@ async def health_check():
     return {
         "status": "ok",
         "eye_model_loaded": model_loader.eye_model is not None,
-        "gill_model_loaded": model_loader.gill_model is not None,
-        "eyes_gills_model_loaded": model_loader.eyes_gills_model is not None
+        "gill_model_loaded": model_loader.gill_model is not None
     }
 
 
@@ -155,10 +154,22 @@ async def predict_from_upload(file: UploadFile = File(...)):
         print(f"[PREDICT] Eye detected: {regions['eye_detected']}, Eye ROI is None: {regions['eye'] is None}")
         if regions['eye'] is not None:
             print(f"[PREDICT] Eye ROI shape: {regions['eye'].shape}")
+        # Robust check: eye must be detected, not None, and shape must be (224, 224, 3)
         if regions['eye_detected'] and regions['eye'] is not None:
-            print(f"[PREDICT] Calling predict_eye...")
-            predictions['eye_prediction'] = model_loader.predict_eye(regions['eye'], include_glcm=True)
-            print(f"[PREDICT] Eye prediction result: {predictions['eye_prediction']}")
+            if isinstance(regions['eye'], np.ndarray) and regions['eye'].ndim == 3 and regions['eye'].shape[0] == 224 and regions['eye'].shape[1] == 224:
+                print(f"[PREDICT] Calling predict_eye...")
+                try:
+                    predictions['eye_prediction'] = model_loader.predict_eye(regions['eye'], include_glcm=True)
+                    print(f"[PREDICT] Eye prediction result: {predictions['eye_prediction']}")
+                except Exception as e:
+                    print(f"[PREDICT] ERROR in predict_eye: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    predictions['eye_prediction'] = None
+            else:
+                print(f"[PREDICT] Eye ROI shape invalid: {regions['eye'].shape if hasattr(regions['eye'], 'shape') else 'unknown'}")
+        else:
+            print(f"[PREDICT] Eye not detected or ROI is None")
         
         # Predict from gill if detected
         print(f"[PREDICT] Gill detected: {regions['gill_detected']}, Gill ROI is None: {regions['gill'] is None}")
@@ -210,6 +221,8 @@ async def predict_from_upload(file: UploadFile = File(...)):
         return JSONResponse(predictions)
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

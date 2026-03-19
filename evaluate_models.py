@@ -35,6 +35,11 @@ class ModelEvaluator:
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
+        # Map model type to correct data folder
+        self.data_folders = {
+            'eyes': 'eyes_split',
+            'gills': 'gills_split',
+        }
         
         # Load feature extractors
         print("Loading feature extractors...")
@@ -50,72 +55,45 @@ class ModelEvaluator:
         )
         print("✓ Feature extractors loaded")
     
-    def load_images_and_extract_features(self, folder_type):
-        """Load images and extract features (same as training)"""
-        print(f"\n[LOADER] Loading {folder_type} images...")
-        
-        resnet_features_list = []
-        mobilenet_features_list = []
-        glcm_features_list = []
-        labels_list = []
+    def load_images_and_labels(self, folder_type, split='train'):
+        """Load and preprocess images, return X, y, image_paths (no feature extraction)
+        split: 'train', 'val', or 'test' (default 'train')
+        """
+        print(f"\n[LOADER] Loading {folder_type} images from {split} set...")
+        images = []
+        labels = []
         image_paths = []
-        
-        folder_path = self.data_dir / folder_type
+        folder_name = self.data_folders.get(folder_type, folder_type)
+        folder_path = self.data_dir / folder_name / split
         if not folder_path.exists():
             print(f"⚠ Folder not found: {folder_path}")
-            return None, None, None, None
-        
+            return None, None, None
         for class_idx, class_name in enumerate(self.FRESHNESS_CLASSES):
             class_path = folder_path / class_name
             if not class_path.exists():
                 continue
-            
             image_files = list(class_path.glob('*.jpg')) + list(class_path.glob('*.png'))
             print(f"  {class_name}: {len(image_files)} images")
-            
             for img_path in image_files:
                 try:
                     image = cv2.imread(str(img_path))
                     if image is None:
                         continue
-                    
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    
-                    # Extract ResNet50 features
-                    processed_resnet = preprocess_input(image.astype(np.float32))
-                    batch_resnet = np.expand_dims(processed_resnet, axis=0)
-                    resnet_feat = self.resnet_model.predict(batch_resnet, verbose=0)
-                    resnet_features_list.append(resnet_feat[0])
-                    
-                    # Extract MobileNetV1 features
-                    processed_mobile = mobilenet_preprocess(image.astype(np.float32))
-                    batch_mobile = np.expand_dims(processed_mobile, axis=0)
-                    mobilenet_feat = self.mobilenet_model.predict(batch_mobile, verbose=0)
-                    mobilenet_features_list.append(mobilenet_feat[0])
-                    
-                    # Extract GLCM features
-                    glcm_dict = GLCMExtractor.compute_glcm_summary(image)
-                    glcm_feat = self._flatten_glcm_features(glcm_dict)
-                    glcm_features_list.append(glcm_feat)
-                    
-                    labels_list.append(class_idx)
+                    image = cv2.resize(image, (224, 224))
+                    image = image.astype(np.float32) / 255.0
+                    images.append(image)
+                    labels.append(class_idx)
                     image_paths.append(img_path)
-                
                 except Exception as e:
                     print(f"⚠ Error processing {img_path}: {e}")
                     continue
-        
-        if not resnet_features_list:
-            return None, None, None, None
-        
-        X_resnet = np.array(resnet_features_list)
-        X_mobilenet = np.array(mobilenet_features_list)
-        X_cnn = np.concatenate([X_resnet, X_mobilenet], axis=1)
-        X_glcm = np.array(glcm_features_list)
-        y = np.array(labels_list)
-        
-        print(f"✓ Loaded {len(y)} images")
-        return X_cnn, X_glcm, y, image_paths
+        if not images:
+            return None, None, None
+        X = np.array(images)
+        y = np.array(labels)
+        print(f"✓ Loaded {len(y)} images from {split} set")
+        return X, y, image_paths
     
     def _flatten_glcm_features(self, glcm_dict):
         """Flatten GLCM dict into 29-feature vector"""
@@ -239,10 +217,10 @@ class ModelEvaluator:
         print(f"✓ Saved class distribution: {output_path}")
         plt.close()
     
-    def plot_sample_predictions(self, X_cnn, X_glcm, y_true, image_paths, model, model_name, num_samples=12):
+    def plot_sample_predictions(self, X, _unused, y_true, image_paths, model, model_name, num_samples=12):
         """Plot sample predictions with images"""
         # Get predictions
-        y_pred_probs = model.predict([X_cnn, X_glcm], verbose=0)
+        y_pred_probs = model.predict(X, verbose=0)
         y_pred = np.argmax(y_pred_probs, axis=1)
         
         # Sample images (mix of correct and incorrect)
@@ -314,53 +292,48 @@ class ModelEvaluator:
         plt.close()
     
     def evaluate_model(self, model_path, folder_type):
-        """Complete evaluation of a model"""
+        """Complete evaluation of a model using the test set"""
         model_name = folder_type
         print(f"\n{'='*60}")
-        print(f"EVALUATING {model_name.upper()} MODEL")
+        print(f"EVALUATING {model_name.upper()} MODEL (TEST SET)")
         print(f"{'='*60}")
-        
+
         # Load model
         if not model_path.exists():
             print(f"✗ Model not found: {model_path}")
             return None
-        
+
         model = load_model(str(model_path), compile=False)
         print(f"✓ Loaded model: {model_path.name}")
-        
-        # Load data
-        X_cnn, X_glcm, y, image_paths = self.load_images_and_extract_features(folder_type)
-        if X_cnn is None:
-            print(f"✗ Failed to load data for {folder_type}")
+
+        # Load test data
+        X_test, y_test, paths_test = self.load_images_and_labels(folder_type, split='test')
+        if X_test is None:
+            print(f"✗ Failed to load test data for {folder_type}")
             return None
-        
-        # Split data (same as training)
-        X_cnn_train, X_cnn_test, X_g_train, X_g_test, y_train, y_test, paths_train, paths_test = train_test_split(
-            X_cnn, X_glcm, y, image_paths, test_size=0.2, random_state=42, stratify=y
-        )
-        
+
         print(f"\n[EVALUATION] Test set: {len(y_test)} images")
         print(f"  Class distribution: {np.bincount(y_test)}")
-        
+
         # Get predictions
-        y_pred_probs = model.predict([X_cnn_test, X_g_test], verbose=0)
+        y_pred_probs = model.predict(X_test, verbose=0)
         y_pred = np.argmax(y_pred_probs, axis=1)
-        
+
         # Calculate accuracy
         accuracy = accuracy_score(y_test, y_pred)
         print(f"\n✓ Test Accuracy: {accuracy*100:.2f}%")
-        
+
         # Print classification report
         print(f"\nClassification Report:")
         print(classification_report(y_test, y_pred, target_names=self.CLASS_NAMES, digits=4))
-        
+
         # Generate visualizations
         print(f"\n[VISUALIZATIONS] Generating plots...")
         self.plot_confusion_matrix(y_test, y_pred, model_name)
         self.plot_classification_metrics(y_test, y_pred, model_name)
         self.plot_class_distribution(y_test, y_pred, model_name)
-        self.plot_sample_predictions(X_cnn_test, X_g_test, y_test, paths_test, model, model_name)
-        
+        self.plot_sample_predictions(X_test, None, y_test, paths_test, model, model_name)
+
         return {
             'accuracy': accuracy,
             'y_true': y_test,
@@ -372,8 +345,13 @@ class ModelEvaluator:
         """Evaluate all available models"""
         results = {}
         
-        for folder_type in ['eyes', 'gills', 'eyes_and_gills']:
-            model_path = self.models_dir / f'best_model_{folder_type}.h5'
+        model_files = {
+            'eyes': 'hybrid_eyes_model.h5',
+            'gills': 'hybrid_gills_model.h5',
+            # 'eyes_and_gills': 'hybrid_eyes_and_gills_model.h5',  # Uncomment if you have this model
+        }
+        for folder_type, model_filename in model_files.items():
+            model_path = self.models_dir / model_filename
             if model_path.exists():
                 result = self.evaluate_model(model_path, folder_type)
                 if result:

@@ -18,7 +18,7 @@ import traceback
 class ModelLoader:
     """Loads and manages fish freshness models"""
     
-    FRESHNESS_CLASSES = ['Fresh', 'Less Fresh', 'Starting to Rot', 'Rotten']
+    FRESHNESS_CLASSES = ['fresh', 'less_fresh', 'starting_to_rot', 'rotten']
     GLCM_PROPERTIES = ['contrast', 'dissimilarity', 'homogeneity', 'energy', 'correlation', 'ASM']
     
     def __init__(self, models_dir: str):
@@ -31,7 +31,7 @@ class ModelLoader:
         self.models_dir = Path(models_dir)
         self.eye_model: Optional[tf.keras.Model] = None
         self.gill_model: Optional[tf.keras.Model] = None
-        self.eyes_gills_model: Optional[tf.keras.Model] = None
+        print(f"[DEBUG] ModelLoader will load models from: {self.models_dir.resolve()}")
         
         # Create ResNet50 feature extractor (2048 features)
         self.resnet_model = tf.keras.applications.ResNet50(
@@ -50,29 +50,22 @@ class ModelLoader:
         self._load_models()
     
     def _load_models(self):
-        """Load all three models"""
+        """Load eye and gill models only"""
         try:
-            eye_path = self.models_dir / 'best_model_eyes.h5'
+            eye_path = self.models_dir / 'hybrid_eyes_model.h5'
+            print(f"[DEBUG] Eye model path: {eye_path.resolve()}")
             if eye_path.exists():
                 self.eye_model = load_model(str(eye_path), compile=False)
                 print(f"✓ Loaded eye model")
             else:
                 print(f"⚠ Eye model not found: {eye_path}")
-            
-            gill_path = self.models_dir / 'best_model_gills.h5'
+            gill_path = self.models_dir / 'hybrid_gills_model.h5'
+            print(f"[DEBUG] Gill model path: {gill_path.resolve()}")
             if gill_path.exists():
                 self.gill_model = load_model(str(gill_path), compile=False)
                 print(f"✓ Loaded gill model")
             else:
                 print(f"⚠ Gill model not found: {gill_path}")
-            
-            eyes_gills_path = self.models_dir / 'best_model_eyes_and_gills.h5'
-            if eyes_gills_path.exists():
-                self.eyes_gills_model = load_model(str(eyes_gills_path), compile=False)
-                print(f"✓ Loaded eyes and gills model")
-            else:
-                print(f"⚠ Eyes and gills model not found: {eyes_gills_path}")
-        
         except Exception as e:
             print(f"Error loading models: {e}")
             raise
@@ -167,54 +160,86 @@ class ModelLoader:
         
         return image
     
-    def predict_eye(self, eye_image: np.ndarray, include_glcm: bool = False) -> Optional[dict]:
+    def apply_white_balance(self, img: np.ndarray) -> np.ndarray:
+        """Minimal white balance - preserve natural color signature for real fish"""
+        import cv2
+        # Just return the image as-is - preserve natural colors
+        # Aggressive white balance was corrupting real-world fish images
+        return img
+    
+    def predict_eye(self, eye_image: np.ndarray, include_glcm: bool = False, eye_bbox: tuple = None) -> Optional[dict]:
         """
-        Predict freshness from eye image
-        
+        Predict freshness from eye image using new hybrid model (expects 224x224x3 image input)
         Args:
-            eye_image: Eye ROI image
+            eye_image: Full fish image or eye ROI
             include_glcm: If True, include GLCM texture features in output
-        
+            eye_bbox: Optional bounding box (x, y, w, h) for eye ROI. If provided, will use EyeDetector's extract_eye_roi.
         Returns: dict with 'class', 'confidence', 'probabilities', and optionally 'glcm_features'
         """
         if self.eye_model is None:
             return None
-        
         try:
-            # Resize to 224×224 for speed
             import cv2
-            if eye_image.shape[:2] != (224, 224):
-                eye_image_resized = cv2.resize(eye_image, (224, 224))
+            from app.detection.eye_detector import EyeDetector
+            if eye_bbox is not None:
+                detector = EyeDetector()
+                roi = detector.extract_eye_roi(eye_image, eye_bbox)
+                if roi is None:
+                    print("[ERROR][EYE] Eye ROI extraction failed.")
+                    return None
+                # ROI from detector is BGR uint8, convert to RGB (0-255 range)
+                image = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB).astype(np.float32)
             else:
-                eye_image_resized = eye_image
+                # Fallback: use input as ROI
+                roi_bgr = eye_image if len(eye_image.shape) == 3 and eye_image.shape[2] == 3 else cv2.cvtColor(eye_image, cv2.COLOR_RGB2BGR)
+                if roi_bgr.shape[:2] != (224, 224):
+                    roi_bgr = cv2.resize(roi_bgr, (224, 224))
+                # Convert BGR to RGB (KEEP 0-255 range - matching training)
+                image = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2RGB).astype(np.float32)
+
+            # Debug: Save preprocessed image to disk for inspection
+            import os
+            debug_dir = './debug_eye_detector/preprocessed/'
+            os.makedirs(debug_dir, exist_ok=True)
             
-            # Extract ResNet50 features (2048-dim)
-            processed_resnet = self.preprocess_image_resnet(eye_image_resized)
-            batch_resnet = np.expand_dims(processed_resnet, axis=0)
-            resnet_features = self.resnet_model.predict(batch_resnet, verbose=0)
-            print(f"[MODEL] Eye ResNet50 features - min: {resnet_features.min():.3f}, max: {resnet_features.max():.3f}, mean: {resnet_features.mean():.3f}")
+            # SAVE: Original extracted ROI (before any preprocessing)
+            roi_path = os.path.join(debug_dir, 'eye_roi_ORIGINAL.png')
+            # eye_image is RGB from extract_eye_roi, convert to BGR for cv2.imwrite
+            if len(eye_image.shape) == 3 and eye_image.shape[2] == 3:
+                cv2.imwrite(roi_path, cv2.cvtColor(eye_image, cv2.COLOR_RGB2BGR))
+            else:
+                cv2.imwrite(roi_path, eye_image)
+            print(f"[DEBUG][EYE] Saved original ROI to {roi_path}")
             
-            # Extract MobileNetV1 features (1024-dim)
-            processed_mobile = self.preprocess_image_mobilenet(eye_image_resized)
-            batch_mobile = np.expand_dims(processed_mobile, axis=0)
-            mobilenet_features = self.mobilenet_model.predict(batch_mobile, verbose=0)
-            print(f"[MODEL] Eye MobileNetV1 features - min: {mobilenet_features.min():.3f}, max: {mobilenet_features.max():.3f}, mean: {mobilenet_features.mean():.3f}")
+            debug_img_path = os.path.join(debug_dir, 'eye_preprocessed.png')
+            img_to_save = (image * 255.0).clip(0, 255).astype('uint8')
+            cv2.imwrite(debug_img_path, cv2.cvtColor(img_to_save, cv2.COLOR_RGB2BGR))
+            print(f"[DEBUG][EYE] Saved preprocessed image to {debug_img_path}")
             
-            # Combine CNN features (2048 + 1024 = 3072)
-            cnn_features = np.concatenate([resnet_features, mobilenet_features], axis=1)
-            
-            # Get GLCM features from resized image
-            glcm_dict = GLCMExtractor.compute_glcm_summary(eye_image_resized)
-            glcm_features = self._flatten_glcm_features(glcm_dict)
-            print(f"[MODEL] Eye GLCM features - min: {glcm_features.min():.3f}, max: {glcm_features.max():.3f}, mean: {glcm_features.mean():.3f}, non-zero: {np.count_nonzero(glcm_features)}/29")
-            glcm_batch = np.expand_dims(glcm_features, axis=0)
-            
-            # For new retrained eyes model: concatenate features for single input
-            combined_features = np.concatenate([cnn_features, glcm_batch], axis=1)
-            predictions = self.eye_model.predict(combined_features, verbose=0)
+            # DEBUG: Also save as heatmap showing brightness distribution
+            gray_version = cv2.cvtColor(img_to_save, cv2.COLOR_RGB2GRAY)
+            heatmap = cv2.applyColorMap(gray_version, cv2.COLORMAP_JET)
+            cv2.imwrite(os.path.join(debug_dir, 'eye_brightness_heatmap.png'), heatmap)
+            print(f"[DEBUG][EYE] Image brightness stats - min:{gray_version.min()}, max:{gray_version.max()}, mean:{gray_version.mean():.1f}")
+
+            # --- Extract features as in training (no additional preprocessing for eyes) ---
+            resnet_feat = self.resnet_model.predict(np.expand_dims(self.preprocess_image_resnet(image), axis=0), verbose=0)[0]
+            mobilenet_feat = self.mobilenet_model.predict(np.expand_dims(self.preprocess_image_mobilenet(image), axis=0), verbose=0)[0]
+            # CRITICAL FIX: Compute GLCM from uint8 image (0-255), not float32 (0-1)
+            glcm_dict = GLCMExtractor.compute_glcm_summary(img_to_save)
+            glcm_feat = self._flatten_glcm_features(glcm_dict)
+            cnn_features = np.concatenate([resnet_feat, mobilenet_feat])
+            batch_cnn = np.expand_dims(cnn_features, axis=0)
+            batch_glcm = np.expand_dims(glcm_feat, axis=0)
+            # Debug: print feature stats
+            print(f"[DEBUG][EYE] CNN features mean: {cnn_features.mean():.4f}, std: {cnn_features.std():.4f}, min: {cnn_features.min():.4f}, max: {cnn_features.max():.4f}")
+            print(f"[DEBUG][EYE] GLCM features mean: {glcm_feat.mean():.4f}, std: {glcm_feat.std():.4f}, min: {glcm_feat.min():.4f}, max: {glcm_feat.max():.4f}, non-zero: {np.count_nonzero(glcm_feat)}/29")
+            print(f"[DEBUG][EYE] ResNet50 specific: mean={resnet_feat.mean():.4f}, top5: {np.sort(resnet_feat)[-5:]}")
+            print(f"[DEBUG][EYE] MobileNetV1 specific: mean={mobilenet_feat.mean():.4f}, top5: {np.sort(mobilenet_feat)[-5:]}")
+            predictions = self.eye_model.predict([batch_cnn, batch_glcm], verbose=0)
+            print(f"[DEBUG][EYE] Raw prediction probabilities: {predictions[0]}")
             class_idx = np.argmax(predictions[0])
             confidence = float(predictions[0][class_idx])
-            
             result = {
                 'class': self.FRESHNESS_CLASSES[class_idx],
                 'confidence': confidence,
@@ -223,11 +248,8 @@ class ModelLoader:
                     for i in range(len(self.FRESHNESS_CLASSES))
                 }
             }
-            
-            # Add GLCM features if requested
             if include_glcm:
-                result['glcm_features'] = GLCMExtractor.compute_glcm_summary(eye_image)
-            
+                result['glcm_features'] = glcm_dict
             return result
         except Exception as e:
             print(f"[ERROR] Error predicting eye: {e}")
@@ -237,125 +259,83 @@ class ModelLoader:
     
     def normalize_gill_lighting(self, image: np.ndarray) -> np.ndarray:
         """
-        Data-driven gill normalization based on training data analysis.
+        Minimal gill preprocessing - preserve natural color for real fish.
         
-        Training data characteristics:
-        - Fresh: brightness=144.7, R-G=20.3, Hue=17°, Saturation=72.1
-        - Less Fresh: brightness=118.8, R-G=23.6, Hue=62°, Saturation=89.2
-        - Starting to Rot: brightness=79.9, R-G=7.8, Hue=55°, Saturation=50.6
-        - Rotten: brightness=71.7, R-G=9.1, Hue=59°, Saturation=62.7
-        
-        CRITICAL ISSUE: Training data has blue color cast (B=131-132 for rotten)
-        This is NOT natural. Real rotten gills should be brown/dark red.
-        Need to correct blue bias before feature extraction.
+        NOTE: Previous aggressive white balance was corrupting real-world images.
+        The training data had unnatural characteristics; we should NOT
+        try to match those unnatural patterns on real fish.
         """
         import cv2
-        
-        # Debug: Log original colors
-        bgr_orig = image.astype(np.float32)
-        b_orig, g_orig, r_orig = cv2.split(bgr_orig)
-        print(f"[GILL PREPROCESS] Original RGB: R={r_orig.mean():.1f}, G={g_orig.mean():.1f}, B={b_orig.mean():.1f}")
-        
-        # STEP 1: White balance correction to remove blue bias
-        # Training data shows unnatural high blue values in rotten class
-        bgr = image.astype(np.float32)
-        b, g, r = cv2.split(bgr)
-        
-        # Calculate gray world assumption correction
-        r_mean, g_mean, b_mean = r.mean(), g.mean(), b.mean()
-        gray_mean = (r_mean + g_mean + b_mean) / 3
-        
-        # Apply correction - reduce blue if it's dominant
-        r = r * (gray_mean / (r_mean + 1e-6))
-        g = g * (gray_mean / (g_mean + 1e-6))
-        b = b * (gray_mean / (b_mean + 1e-6))
-        
-        # Clip and merge
-        bgr_balanced = cv2.merge([
-            np.clip(b, 0, 255),
-            np.clip(g, 0, 255),
-            np.clip(r, 0, 255)
-        ]).astype(np.uint8)
-        
-        # Debug: Log after white balance
-        b_bal, g_bal, r_bal = cv2.split(bgr_balanced.astype(np.float32))
-        print(f"[GILL PREPROCESS] After white balance: R={r_bal.mean():.1f}, G={g_bal.mean():.1f}, B={b_bal.mean():.1f}")
-        
-        # STEP 2: Brightness normalization using LAB
-        lab = cv2.cvtColor(bgr_balanced, cv2.COLOR_BGR2LAB)
-        l, a, b_ch = cv2.split(lab)
-        
-        print(f"[GILL PREPROCESS] Brightness before CLAHE: {l.mean():.1f}")
-        
-        # Apply CLAHE to L channel (brightness) - critical for normalizing dark images
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        l_normalized = clahe.apply(l)
-        
-        print(f"[GILL PREPROCESS] Brightness after CLAHE: {l_normalized.mean():.1f}")
-        
-        # Merge back to LAB and convert to BGR
-        lab_normalized = cv2.merge([l_normalized, a, b_ch])
-        bgr_final = cv2.cvtColor(lab_normalized, cv2.COLOR_LAB2BGR)
-        
-        # Debug: Log final colors
-        b_fin, g_fin, r_fin = cv2.split(bgr_final.astype(np.float32))
-        print(f"[GILL PREPROCESS] Final RGB: R={r_fin.mean():.1f}, G={g_fin.mean():.1f}, B={b_fin.mean():.1f}")
-        
-        return bgr_final
+        # Return image as-is - preserve natural gilt color signature
+        # Models were trained with aggressive aug which makes them robust enough
+        return image
     
     def predict_gill(self, gill_image: np.ndarray, include_glcm: bool = False) -> Optional[dict]:
         """
-        Predict freshness from gill image
-        
+        Predict freshness from gill image using new hybrid model (expects 224x224x3 image input)
         Args:
             gill_image: Gill ROI image
             include_glcm: If True, include GLCM texture features in output
-        
         Returns: dict with 'class', 'confidence', 'probabilities', and optionally 'glcm_features'
         """
         if self.gill_model is None:
             return None
-        
         try:
-            # Resize to 224×224 for speed
             import cv2
+            # Ensure image is 224x224 and 3 channels
             if gill_image.shape[:2] != (224, 224):
                 gill_image_resized = cv2.resize(gill_image, (224, 224))
             else:
                 gill_image_resized = gill_image
+            if len(gill_image_resized.shape) == 2 or gill_image_resized.shape[2] == 1:
+                gill_image_resized = np.stack([gill_image_resized]*3, axis=2)
             
-            # Normalize lighting for gills to handle shadows and brightness variations
-            gill_image_resized = self.normalize_gill_lighting(gill_image_resized)
+            # No white balance - training didn't use it either
+            # ROI should be BGR uint8, convert to RGB (KEEP 0-255 range)
+            print("[DEBUG][GILL] Converting BGR ROI to RGB (no white balance)...")
+            image = cv2.cvtColor(gill_image_resized, cv2.COLOR_BGR2RGB).astype(np.float32)
             
-            # Extract ResNet50 features (2048-dim)
-            processed_resnet = self.preprocess_image_resnet(gill_image_resized)
-            batch_resnet = np.expand_dims(processed_resnet, axis=0)
-            resnet_features = self.resnet_model.predict(batch_resnet, verbose=0)
-            print(f"[MODEL] Gill ResNet50 features - min: {resnet_features.min():.3f}, max: {resnet_features.max():.3f}, mean: {resnet_features.mean():.3f}")
+            # DEBUG: Save preprocessed gill image
+            import os
+            debug_dir = './debug_gill_detector/preprocessed/'
+            os.makedirs(debug_dir, exist_ok=True)
             
-            # Extract MobileNetV1 features (1024-dim)
-            processed_mobile = self.preprocess_image_mobilenet(gill_image_resized)
-            batch_mobile = np.expand_dims(processed_mobile, axis=0)
-            mobilenet_features = self.mobilenet_model.predict(batch_mobile, verbose=0)
-            print(f"[MODEL] Gill MobileNetV1 features - min: {mobilenet_features.min():.3f}, max: {mobilenet_features.max():.3f}, mean: {mobilenet_features.mean():.3f}")
+            # SAVE: Original extracted ROI (before any preprocessing)
+            roi_path = os.path.join(debug_dir, 'gill_roi_ORIGINAL.png')
+            # gill_image is BGR from extraction, save directly
+            cv2.imwrite(roi_path, gill_image if len(gill_image.shape) == 3 else cv2.cvtColor(gill_image, cv2.COLOR_GRAY2BGR))
+            print(f"[DEBUG][GILL] Saved original ROI to {roi_path} - this should be tight on gill tissue only")
             
-            # Combine CNN features (2048 + 1024 = 3072)
-            cnn_features = np.concatenate([resnet_features, mobilenet_features], axis=1)
+            debug_img_path = os.path.join(debug_dir, 'gill_preprocessed.png')
+            img_to_save = (image * 255.0).clip(0, 255).astype('uint8')
+            # image is BGR (from apply_white_balance), so save directly without conversion
+            cv2.imwrite(debug_img_path, img_to_save)
+            print(f"[DEBUG][GILL] Saved preprocessed image to {debug_img_path}")
             
-            # Get GLCM features from resized image
-            glcm_dict = GLCMExtractor.compute_glcm_summary(gill_image_resized)
-            glcm_features = self._flatten_glcm_features(glcm_dict)
-            print(f"[MODEL] Gill GLCM features - min: {glcm_features.min():.3f}, max: {glcm_features.max():.3f}, mean: {glcm_features.mean():.3f}, non-zero: {np.count_nonzero(glcm_features)}/29")
-            glcm_batch = np.expand_dims(glcm_features, axis=0)
+            # DEBUG: Also save as heatmap showing color distribution (R channel)
+            r_channel = img_to_save[:, :, 2]  # Red is at index 2 in BGR
+            heatmap = cv2.applyColorMap(r_channel, cv2.COLORMAP_JET)
+            cv2.imwrite(os.path.join(debug_dir, 'gill_red_heatmap.png'), heatmap)
+            print(f"[DEBUG][GILL] Image color stats - R_mean:{img_to_save[:,:,2].mean():.1f}, G_mean:{img_to_save[:,:,1].mean():.1f}, B_mean:{img_to_save[:,:,0].mean():.1f}")
             
-            # Concatenate CNN + GLCM features (3072 + 29 = 3101) - retrained model expects single input
-            combined_features = np.concatenate([cnn_features, glcm_batch], axis=1)
-            
-            # Predict
-            predictions = self.gill_model.predict(combined_features, verbose=0)
+            # --- Extract features as in training ---
+            resnet_feat = self.resnet_model.predict(np.expand_dims(self.preprocess_image_resnet(image), axis=0), verbose=0)[0]
+            mobilenet_feat = self.mobilenet_model.predict(np.expand_dims(self.preprocess_image_mobilenet(image), axis=0), verbose=0)[0]
+            # CRITICAL FIX: Compute GLCM from uint8 image (0-255), not float32 (0-1)
+            glcm_dict = GLCMExtractor.compute_glcm_summary(img_to_save)
+            glcm_feat = self._flatten_glcm_features(glcm_dict)
+            cnn_features = np.concatenate([resnet_feat, mobilenet_feat])
+            batch_cnn = np.expand_dims(cnn_features, axis=0)
+            batch_glcm = np.expand_dims(glcm_feat, axis=0)
+            # Debug: print feature stats
+            print(f"[DEBUG][GILL] CNN features mean: {cnn_features.mean():.4f}, std: {cnn_features.std():.4f}, min: {cnn_features.min():.4f}, max: {cnn_features.max():.4f}")
+            print(f"[DEBUG][GILL] GLCM features mean: {glcm_feat.mean():.4f}, std: {glcm_feat.std():.4f}, min: {glcm_feat.min():.4f}, max: {glcm_feat.max():.4f}, non-zero: {np.count_nonzero(glcm_feat)}/29")
+            print(f"[DEBUG][GILL] ResNet50 specific: mean={resnet_feat.mean():.4f}, top5: {np.sort(resnet_feat)[-5:]}")
+            print(f"[DEBUG][GILL] MobileNetV1 specific: mean={mobilenet_feat.mean():.4f}, top5: {np.sort(mobilenet_feat)[-5:]}")
+            predictions = self.gill_model.predict([batch_cnn, batch_glcm], verbose=0)
+            print(f"[DEBUG][GILL] Raw prediction probabilities: {predictions[0]}")
             class_idx = np.argmax(predictions[0])
             confidence = float(predictions[0][class_idx])
-            
             result = {
                 'class': self.FRESHNESS_CLASSES[class_idx],
                 'confidence': confidence,
@@ -364,11 +344,8 @@ class ModelLoader:
                     for i in range(len(self.FRESHNESS_CLASSES))
                 }
             }
-            
-            # Add GLCM features if requested
             if include_glcm:
-                result['glcm_features'] = GLCMExtractor.compute_glcm_summary(gill_image)
-            
+                result['glcm_features'] = glcm_dict
             return result
         except Exception as e:
             print(f"[ERROR] Error predicting gill: {e}")
@@ -386,58 +363,5 @@ class ModelLoader:
         
         Returns: dict with 'class', 'confidence', 'probabilities', and optionally 'glcm_features'
         """
-        if self.eyes_gills_model is None:
-            return None
-        
-        try:
-            # Resize to 224×224 for speed
-            import cv2
-            if full_image.shape[:2] != (224, 224):
-                full_image_resized = cv2.resize(full_image, (224, 224))
-            else:
-                full_image_resized = full_image
-            
-            # Extract ResNet50 features (2048-dim)
-            processed_resnet = self.preprocess_image_resnet(full_image_resized)
-            batch_resnet = np.expand_dims(processed_resnet, axis=0)
-            resnet_features = self.resnet_model.predict(batch_resnet, verbose=0)
-            print(f"[MODEL] Eyes+Gills ResNet50 features - min: {resnet_features.min():.3f}, max: {resnet_features.max():.3f}, mean: {resnet_features.mean():.3f}")
-            
-            # Extract MobileNetV1 features (1024-dim)
-            processed_mobile = self.preprocess_image_mobilenet(full_image_resized)
-            batch_mobile = np.expand_dims(processed_mobile, axis=0)
-            mobilenet_features = self.mobilenet_model.predict(batch_mobile, verbose=0)
-            print(f"[MODEL] Eyes+Gills MobileNetV1 features - min: {mobilenet_features.min():.3f}, max: {mobilenet_features.max():.3f}, mean: {mobilenet_features.mean():.3f}")
-            
-            # Combine CNN features (2048 + 1024 = 3072)
-            cnn_features = np.concatenate([resnet_features, mobilenet_features], axis=1)
-            
-            # Get GLCM features from resized image
-            glcm_dict = GLCMExtractor.compute_glcm_summary(full_image_resized)
-            glcm_features = self._flatten_glcm_features(glcm_dict)
-            glcm_batch = np.expand_dims(glcm_features, axis=0)
-            
-            # Model expects [cnn_features, glcm] inputs
-            predictions = self.eyes_gills_model.predict([cnn_features, glcm_batch], verbose=0)
-            class_idx = np.argmax(predictions[0])
-            confidence = float(predictions[0][class_idx])
-            
-            result = {
-                'class': self.FRESHNESS_CLASSES[class_idx],
-                'confidence': confidence,
-                'probabilities': {
-                    self.FRESHNESS_CLASSES[i]: float(predictions[0][i])
-                    for i in range(len(self.FRESHNESS_CLASSES))
-                }
-            }
-            
-            # Add GLCM features if requested
-            if include_glcm:
-                result['glcm_features'] = GLCMExtractor.compute_glcm_summary(full_image)
-            
-            return result
-        except Exception as e:
-            print(f"[ERROR] Error predicting eyes/gills: {e}")
-            print(f"[ERROR] Full traceback:")
-            traceback.print_exc()
-            return None
+        # Eyes+Gills model removed. This function is now deprecated.
+        return None

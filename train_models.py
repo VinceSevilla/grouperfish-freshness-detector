@@ -115,8 +115,8 @@ class FishFreshnessTrainer:
                     if image is None:
                         print(f"⚠ Failed to load: {img_path}")
                         continue
-                    # White balance correction for gills
-                    if folder_type == 'gills':
+                    # White balance correction for both eyes and gills
+                    if folder_type in ['gills', 'eyes']:
                         image = self.apply_white_balance(image)
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                     # Apply data augmentation (50% chance)
