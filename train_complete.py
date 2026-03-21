@@ -97,6 +97,35 @@ class FishFreshnessTrainer:
             # Strong adaptive histogram equalization
             iaa.CLAHE(clip_limit=(3, 8)),
         ], random_order=True)
+        
+        # EYES-SPECIFIC augmenter with AGGRESSIVE scale augmentation
+        # Eyes have size variation issue (fresh vs rotten), so need more scale diversity during training
+        self.augmenter_eyes = iaa.Sequential([
+            # AGGRESSIVE Brightness and contrast adjustments
+            iaa.Multiply((0.6, 1.4)),
+            iaa.LinearContrast((0.6, 1.4)),
+            # AGGRESSIVE Color/Hue variations
+            iaa.AddToHueAndSaturation((-30, 30)),
+            # VERY AGGRESSIVE Noise
+            iaa.OneOf([
+                iaa.AdditiveGaussianNoise(scale=(0, 0.15*255)),
+                iaa.SaltAndPepper(0.1),
+                iaa.CoarseDropout(0.1, size_percent=0.1),
+            ]),
+            # AGGRESSIVE blur variations
+            iaa.OneOf([
+                iaa.GaussianBlur(sigma=(0.5, 2.0)),
+                iaa.MedianBlur(k=(3, 7)),
+                iaa.MotionBlur(k=(3, 7)),
+            ]),
+            # Larger crops
+            iaa.CropAndPad(percent=(-0.15, 0.15), pad_mode='reflect'),
+            # *** AGGRESSIVE SCALE AUGMENTATION FOR EYES (0.85-1.15 → 0.6-1.4) ***
+            # Makes model scale-invariant to handle fresh (small) vs rotten (large) eye sizes
+            iaa.Affine(scale=(0.6, 1.4)),
+            # Strong adaptive histogram equalization
+            iaa.CLAHE(clip_limit=(3, 8)),
+        ], random_order=True)
     
     def load_data_from_folder(self, folder_type, split='train'):
         """Load images from specific split folder (train/val/test)"""
@@ -132,7 +161,9 @@ class FishFreshnessTrainer:
                     
                     # APPLY AUGMENTATION ONLY TO TRAINING DATA (BEFORE feature extraction)
                     if split == 'train' and np.random.random() > 0.1:  # 90% get augmented (was 70%)
-                        image = self.augmenter(image=image)
+                        # Use eyes-specific augmenter (with aggressive scale aug) for eyes, standard for gills
+                        augmenter = self.augmenter_eyes if folder_type == 'eyes_split' else self.augmenter
+                        image = augmenter(image=image)
                     
                     # Extract ResNet50 features
                     img_float = image.astype(np.float32)
@@ -418,12 +449,14 @@ def main():
     trainer = FishFreshnessTrainer()
     
     # Train eye model
-    eyes_path = trainer.output_dir / 'hybrid_eyes_model.h5'
-    eyes_model, eyes_results = trainer.train_model('eyes_split', str(eyes_path), epochs=50, batch_size=32)
+    # Use as_posix() to ensure forward slashes for h5py compatibility on Windows
+    eyes_path = (trainer.output_dir / 'hybrid_eyes_model.h5').resolve().as_posix()
+    eyes_model, eyes_results = trainer.train_model('eyes_split', eyes_path, epochs=50, batch_size=32)
     
     # Train gill model
-    gills_path = trainer.output_dir / 'hybrid_gills_model.h5'
-    gills_model, gills_results = trainer.train_model('gills_split', str(gills_path), epochs=50, batch_size=32)
+    # Use as_posix() to ensure forward slashes for h5py compatibility on Windows
+    gills_path = (trainer.output_dir / 'hybrid_gills_model.h5').resolve().as_posix()
+    gills_model, gills_results = trainer.train_model('gills_split', gills_path, epochs=50, batch_size=32)
     
     # Summary
     print(f"\n{'='*70}")
@@ -441,8 +474,84 @@ def main():
         print(f"  Val Accuracy:   {gills_results['val_acc']*100:.2f}%")
         print(f"  Test Accuracy:  {gills_results['test_acc']*100:.2f}%")
     
+    # Create comparison visualizations
+    if eyes_results and gills_results:
+        _plot_accuracy_comparison(trainer.output_dir, eyes_results, gills_results)
+    
     print(f"\nModels saved to: {trainer.output_dir}")
     print(f"Visualizations saved to: {trainer.output_dir}")
+
+def _plot_accuracy_comparison(output_dir, eyes_results, gills_results):
+    """Create comparison visualizations for eyes and gills model accuracies"""
+    
+    # 1. Side-by-side test accuracy comparison
+    fig, ax = plt.subplots(figsize=(10, 6))
+    models = ['EYES Model', 'GILLS Model']
+    test_accuracies = [eyes_results['test_acc']*100, gills_results['test_acc']*100]
+    colors = ['#2E86AB', '#A23B72']
+    
+    bars = ax.bar(models, test_accuracies, color=colors, alpha=0.8, edgecolor='black', linewidth=2)
+    
+    # Add value labels on bars
+    for i, (bar, acc) in enumerate(zip(bars, test_accuracies)):
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+               f'{acc:.2f}%', ha='center', va='bottom', fontsize=14, fontweight='bold')
+    
+    ax.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
+    ax.set_title('Model Comparison: Test Accuracy', fontsize=14, fontweight='bold')
+    ax.set_ylim(0, 105)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'model_accuracy_comparison.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"✓ Saved model accuracy comparison: model_accuracy_comparison.png")
+    
+    # 2. Comprehensive accuracy metrics (Train/Val/Test)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    x = np.arange(2)  # 2 models
+    width = 0.25  # Width of bars
+    
+    train_accs = [eyes_results['train_acc']*100, gills_results['train_acc']*100]
+    val_accs = [eyes_results['val_acc']*100, gills_results['val_acc']*100]
+    test_accs = [eyes_results['test_acc']*100, gills_results['test_acc']*100]
+    
+    bars1 = ax.bar(x - width, train_accs, width, label='Train', color='#06A77D', alpha=0.8, edgecolor='black')
+    bars2 = ax.bar(x, val_accs, width, label='Validation', color='#F18F01', alpha=0.8, edgecolor='black')
+    bars3 = ax.bar(x + width, test_accs, width, label='Test', color='#C73E1D', alpha=0.8, edgecolor='black')
+    
+    # Add value labels
+    for bars in [bars1, bars2, bars3]:
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                   f'{height:.1f}%', ha='center', va='bottom', fontsize=9)
+    
+    ax.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
+    ax.set_title('Model Comparison: Train / Validation / Test Accuracy', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(['EYES Model', 'GILLS Model'], fontsize=11, fontweight='bold')
+    ax.set_ylim(0, 105)
+    ax.legend(loc='upper right', fontsize=11)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'model_full_accuracy_comparison.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"✓ Saved full accuracy comparison: model_full_accuracy_comparison.png")
+    
+    # 3. Display the comparison summary
+    print(f"\n{'='*70}")
+    print("MODEL ACCURACY COMPARISON")
+    print(f"{'='*70}")
+    print(f"\n{'Metric':<20} {'EYES Model':<20} {'GILLS Model':<20}")
+    print(f"{'-'*60}")
+    print(f"{'Train Accuracy':<20} {eyes_results['train_acc']*100:>18.2f}% {gills_results['train_acc']*100:>18.2f}%")
+    print(f"{'Val Accuracy':<20} {eyes_results['val_acc']*100:>18.2f}% {gills_results['val_acc']*100:>18.2f}%")
+    print(f"{'Test Accuracy':<20} {eyes_results['test_acc']*100:>18.2f}% {gills_results['test_acc']*100:>18.2f}%")
+    print(f"{'='*70}")
 
 if __name__ == '__main__':
     main()

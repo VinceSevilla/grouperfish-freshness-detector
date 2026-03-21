@@ -145,28 +145,29 @@ class EyeDetector:
             return (None, None)
 
     def extract_eye_roi(self, image: np.ndarray, eye_rect: Tuple[int, int, int, int]) -> np.ndarray:
-        """Extract square eye ROI to avoid aspect ratio distortion during resize"""
+        """Extract eye ROI with size normalization to remove fresh/rotten detection size bias"""
         x, y, w, h = eye_rect
-        # Calculate center of detection bbox
-        cx = x + w // 2
-        cy = y + h // 2
         
-        # Extract SQUARE crop (1.5x the detected size to get context)
-        size = int(max(w, h) * 1.5)
-        half_size = size // 2
-        
-        # Clip to image bounds
-        x1 = max(0, cx - half_size)
-        y1 = max(0, cy - half_size)
-        x2 = min(image.shape[1], cx + half_size)
-        y2 = min(image.shape[0], cy + half_size)
+        # Extract with minimal padding
+        padding = int(max(w, h) * 0.1)  # 10% padding for context
+        x1 = max(0, x - padding)
+        y1 = max(0, y - padding)
+        x2 = min(image.shape[1], x + w + padding)
+        y2 = min(image.shape[0], y + h + padding)
         
         roi = image[y1:y2, x1:x2]
         if roi.size == 0:
             return None
-            
-        # Resize to 224x224 (now square crop, no distortion)
-        roi_resized = cv2.resize(roi, (224, 224))
+        
+        # SIZE NORMALIZATION: Normalize to standard intermediate size (150px)
+        # This removes the 2.2x size difference between fresh (~125px) and rotten (~280px)
+        # 150px is roughly the mean of fresh and rotten sizes
+        roi_normalized = cv2.resize(roi, (150, 150), interpolation=cv2.INTER_LANCZOS4)
+        
+        # Then resize to final 224x224 for model
+        # Now all eyes (fresh/rotten) are scaled uniformly, removing the size bias
+        roi_resized = cv2.resize(roi_normalized, (224, 224), interpolation=cv2.INTER_LANCZOS4)
+        
         # Convert from BGR to RGB for model input
         roi_rgb = cv2.cvtColor(roi_resized, cv2.COLOR_BGR2RGB)
         return roi_rgb

@@ -128,6 +128,10 @@ class ModelLoader:
     
     def preprocess_image_resnet(self, image: np.ndarray) -> np.ndarray:
         """Preprocess image for ResNet50"""
+        # Ensure uint8 first (0-255 range)
+        if image.dtype != np.uint8:
+            image = (image.clip(0, 255)).astype(np.uint8)
+        
         if len(image.shape) == 2:
             # Convert grayscale to BGR
             image = np.stack([image] * 3, axis=2)
@@ -137,14 +141,17 @@ class ModelLoader:
             import cv2
             image = cv2.resize(image, (224, 224))
         
-        # Convert to float32 and apply ResNet50 preprocessing
-        image = image.astype(np.float32)
-        image = preprocess_input(image)
+        # Apply ResNet50 preprocessing (expects uint8 0-255 or float32 0-1)
+        image = preprocess_input(image.astype(np.float32))
         
         return image
     
     def preprocess_image_mobilenet(self, image: np.ndarray) -> np.ndarray:
         """Preprocess image for MobileNetV1"""
+        # Ensure uint8 first (0-255 range)
+        if image.dtype != np.uint8:
+            image = (image.clip(0, 255)).astype(np.uint8)
+        
         if len(image.shape) == 2:
             # Convert grayscale to BGR
             image = np.stack([image] * 3, axis=2)
@@ -154,9 +161,8 @@ class ModelLoader:
             import cv2
             image = cv2.resize(image, (224, 224))
         
-        # Convert to float32 and apply MobileNet preprocessing
-        image = image.astype(np.float32)
-        image = mobilenet_preprocess(image)
+        # Apply MobileNet preprocessing (expects uint8 0-255 or float32 0-1)
+        image = mobilenet_preprocess(image.astype(np.float32))
         
         return image
     
@@ -187,15 +193,15 @@ class ModelLoader:
                 if roi is None:
                     print("[ERROR][EYE] Eye ROI extraction failed.")
                     return None
-                # ROI from detector is BGR uint8, convert to RGB (0-255 range)
-                image = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB).astype(np.float32)
+                # ROI from detector is already RGB uint8, just convert to float32
+                image = roi.astype(np.float32)
             else:
-                # Fallback: use input as ROI
-                roi_bgr = eye_image if len(eye_image.shape) == 3 and eye_image.shape[2] == 3 else cv2.cvtColor(eye_image, cv2.COLOR_RGB2BGR)
-                if roi_bgr.shape[:2] != (224, 224):
-                    roi_bgr = cv2.resize(roi_bgr, (224, 224))
-                # Convert BGR to RGB (KEEP 0-255 range - matching training)
-                image = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2RGB).astype(np.float32)
+                # Fallback: eye_image is already RGB from extract_eye_roi
+                image_rgb = eye_image if len(eye_image.shape) == 3 and eye_image.shape[2] == 3 else eye_image
+                if image_rgb.shape[:2] != (224, 224):
+                    image_rgb = cv2.resize(image_rgb, (224, 224))
+                # Already RGB, just convert to float32 (0-255 range)
+                image = image_rgb.astype(np.float32)
 
             # Debug: Save preprocessed image to disk for inspection
             import os
@@ -212,7 +218,7 @@ class ModelLoader:
             print(f"[DEBUG][EYE] Saved original ROI to {roi_path}")
             
             debug_img_path = os.path.join(debug_dir, 'eye_preprocessed.png')
-            img_to_save = (image * 255.0).clip(0, 255).astype('uint8')
+            img_to_save = image.astype('uint8')
             cv2.imwrite(debug_img_path, cv2.cvtColor(img_to_save, cv2.COLOR_RGB2BGR))
             print(f"[DEBUG][EYE] Saved preprocessed image to {debug_img_path}")
             
@@ -307,7 +313,7 @@ class ModelLoader:
             print(f"[DEBUG][GILL] Saved original ROI to {roi_path} - this should be tight on gill tissue only")
             
             debug_img_path = os.path.join(debug_dir, 'gill_preprocessed.png')
-            img_to_save = (image * 255.0).clip(0, 255).astype('uint8')
+            img_to_save = image.astype('uint8')
             # image is BGR (from apply_white_balance), so save directly without conversion
             cv2.imwrite(debug_img_path, img_to_save)
             print(f"[DEBUG][GILL] Saved preprocessed image to {debug_img_path}")
