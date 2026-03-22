@@ -180,25 +180,21 @@ async def predict_from_upload(file: UploadFile = File(...)):
             predictions['gill_prediction'] = model_loader.predict_gill(regions['gill'], include_glcm=True)
             print(f"[PREDICT] Gill prediction result: {predictions['gill_prediction']}")
         
-        # Calculate overall prediction by averaging eye and gill predictions
+        # Calculate overall prediction using conservative approach (worse prediction)
         if predictions['eye_prediction'] and predictions['gill_prediction']:
-            # Average the probability distributions
-            eye_probs = predictions['eye_prediction']['probabilities']
-            gill_probs = predictions['gill_prediction']['probabilities']
+            # Map class names to severity (higher = worse)
+            severity_map = {'fresh': 0, 'less_fresh': 1, 'starting_to_rot': 2, 'rotten': 3}
             
-            avg_probs = {}
-            for class_name in eye_probs.keys():
-                avg_probs[class_name] = (eye_probs[class_name] + gill_probs[class_name]) / 2
+            eye_class = predictions['eye_prediction']['class']
+            gill_class = predictions['gill_prediction']['class']
+            eye_severity = severity_map.get(eye_class, 0)
+            gill_severity = severity_map.get(gill_class, 0)
             
-            # Find class with highest average probability
-            overall_class = max(avg_probs, key=avg_probs.get)
-            overall_confidence = avg_probs[overall_class]
-            
-            predictions['integrated_prediction'] = {
-                'class': overall_class,
-                'confidence': overall_confidence,
-                'probabilities': avg_probs
-            }
+            # Select the worse prediction (higher severity)
+            if eye_severity >= gill_severity:
+                predictions['integrated_prediction'] = predictions['eye_prediction']
+            else:
+                predictions['integrated_prediction'] = predictions['gill_prediction']
         else:
             # If only one is available, use that one
             predictions['integrated_prediction'] = predictions['eye_prediction'] or predictions['gill_prediction']
@@ -266,25 +262,21 @@ async def predict_from_camera(payload: CameraRequest):
             predictions['gill_prediction'] = model_loader.predict_gill(regions['gill'], include_glcm=True)
             print(f"[PREDICT-CAM] Gill prediction result: {predictions['gill_prediction']}")
         
-        # Calculate overall prediction by averaging eye and gill predictions
+        # Calculate overall prediction using conservative approach (worse prediction)
         if predictions['eye_prediction'] and predictions['gill_prediction']:
-            # Average the probability distributions
-            eye_probs = predictions['eye_prediction']['probabilities']
-            gill_probs = predictions['gill_prediction']['probabilities']
+            # Map class names to severity (higher = worse)
+            severity_map = {'fresh': 0, 'less_fresh': 1, 'starting_to_rot': 2, 'rotten': 3}
             
-            avg_probs = {}
-            for class_name in eye_probs.keys():
-                avg_probs[class_name] = (eye_probs[class_name] + gill_probs[class_name]) / 2
+            eye_class = predictions['eye_prediction']['class']
+            gill_class = predictions['gill_prediction']['class']
+            eye_severity = severity_map.get(eye_class, 0)
+            gill_severity = severity_map.get(gill_class, 0)
             
-            # Find class with highest average probability
-            overall_class = max(avg_probs, key=avg_probs.get)
-            overall_confidence = avg_probs[overall_class]
-            
-            predictions['integrated_prediction'] = {
-                'class': overall_class,
-                'confidence': overall_confidence,
-                'probabilities': avg_probs
-            }
+            # Select the worse prediction (higher severity)
+            if eye_severity >= gill_severity:
+                predictions['integrated_prediction'] = predictions['eye_prediction']
+            else:
+                predictions['integrated_prediction'] = predictions['gill_prediction']
         else:
             # If only one is available, use that one
             predictions['integrated_prediction'] = predictions['eye_prediction'] or predictions['gill_prediction']

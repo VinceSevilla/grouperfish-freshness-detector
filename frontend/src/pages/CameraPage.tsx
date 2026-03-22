@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
 import { PredictionDisplay } from '@/components/PredictionDisplay'
+import { CombinationSummary } from '@/components/CombinationSummary'
+import { PredictionWarningModal } from '@/components/PredictionWarningModal'
 import { predictionsAPI } from '@/utils/api'
 import { PredictionResponse } from '@/types'
 
@@ -16,6 +18,7 @@ export function CameraPage() {
   const [annotatedImage, setAnnotatedImage] = useState<string | null>(null)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [showResultsModal, setShowResultsModal] = useState(false)
+  const [showWarningModal, setShowWarningModal] = useState(false)
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment")
 
   useEffect(() => {
@@ -87,7 +90,16 @@ export function CameraPage() {
       if (response.annotated_image) {
         setAnnotatedImage(`data:image/png;base64,${response.annotated_image}`)
       }
-      setShowResultsModal(true)
+      
+      // Check if there are missing predictions
+      const eyeMissing = !response.eye_prediction || !response.eye_detected
+      const gillMissing = !response.gill_prediction || !response.gill_detected
+      
+      if (eyeMissing || gillMissing) {
+        setShowWarningModal(true)
+      } else {
+        setShowResultsModal(true)
+      }
     } catch (error) {
       setCameraError('Error analyzing frame. Please try again.')
       console.error('Error predicting:', error)
@@ -243,6 +255,14 @@ export function CameraPage() {
                   detected={true}
                 />
               )}
+
+              {/* Combination Summary */}
+              {predictions.eye_prediction && predictions.gill_prediction && (
+                <CombinationSummary
+                  eyePrediction={predictions.eye_prediction}
+                  gillPrediction={predictions.gill_prediction}
+                />
+              )}
             </div>
           )}
 
@@ -268,6 +288,22 @@ export function CameraPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Prediction Warning Modal */}
+      {predictions && (
+        <PredictionWarningModal
+          isOpen={showWarningModal}
+          onClose={() => setShowWarningModal(false)}
+          onRetry={() => {
+            setShowWarningModal(false)
+            setShowResultsModal(true)
+          }}
+          missingPredictions={{
+            eyeMissing: !predictions.eye_prediction || !predictions.eye_detected,
+            gillMissing: !predictions.gill_prediction || !predictions.gill_detected
+          }}
+        />
+      )}
 
       {/* Hidden canvas for capturing frames */}
       <canvas ref={canvasRef} className="hidden" />

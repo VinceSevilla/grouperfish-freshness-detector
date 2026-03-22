@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
 import { PredictionDisplay } from '@/components/PredictionDisplay'
+import { CombinationSummary } from '@/components/CombinationSummary'
+import { PredictionWarningModal } from '@/components/PredictionWarningModal'
 import { predictionsAPI } from '@/utils/api'
 import { PredictionResponse } from '@/types'
 
@@ -13,6 +15,7 @@ export function UploadPage() {
   const [predictions, setPredictions] = useState<PredictionResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showResultsModal, setShowResultsModal] = useState(false)
+  const [showWarningModal, setShowWarningModal] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragOverRef = useRef(false)
 
@@ -67,7 +70,16 @@ export function UploadPage() {
       setError(null)
       const response = await predictionsAPI.uploadAndPredict(selectedFile)
       setPredictions(response)
-      setShowResultsModal(true)
+      
+      // Check if there are missing predictions
+      const eyeMissing = !response.eye_prediction || !response.eye_detected
+      const gillMissing = !response.gill_prediction || !response.gill_detected
+      
+      if (eyeMissing || gillMissing) {
+        setShowWarningModal(true)
+      } else {
+        setShowResultsModal(true)
+      }
     } catch (err: any) {
       setError('Error analyzing image. Please try again.')
       console.error('Error predicting:', err)
@@ -263,6 +275,14 @@ export function UploadPage() {
                   detected={true}
                 />
               )}
+
+              {/* Combination Summary */}
+              {predictions.eye_prediction && predictions.gill_prediction && (
+                <CombinationSummary
+                  eyePrediction={predictions.eye_prediction}
+                  gillPrediction={predictions.gill_prediction}
+                />
+              )}
             </div>
           )}
 
@@ -288,6 +308,22 @@ export function UploadPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Prediction Warning Modal */}
+      {predictions && (
+        <PredictionWarningModal
+          isOpen={showWarningModal}
+          onClose={() => setShowWarningModal(false)}
+          onRetry={() => {
+            setShowWarningModal(false)
+            setShowResultsModal(true)
+          }}
+          missingPredictions={{
+            eyeMissing: !predictions.eye_prediction || !predictions.eye_detected,
+            gillMissing: !predictions.gill_prediction || !predictions.gill_detected
+          }}
+        />
+      )}
     </div>
   )
 }

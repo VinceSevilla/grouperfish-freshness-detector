@@ -8,19 +8,29 @@ interface PredictionDisplayProps {
 }
 
 function getColorForClass(freshness: string): string {
-  switch (freshness) {
-    case 'Fresh':
-      return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-100 border-green-300 dark:border-green-700'
-    case 'Less Fresh':
-      return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-100 border-yellow-300 dark:border-yellow-700'
-    case 'Starting to Rot':
-      return 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-100 border-orange-300 dark:border-orange-700'
-    case 'Rotten':
-      return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-100 border-red-300 dark:border-red-700'
+  const normalized = freshness.toLowerCase()
+  switch (normalized) {
+    case 'fresh':
+      return 'bg-green-200 dark:bg-green-900/50 text-green-900 dark:text-green-100 border-green-400 dark:border-green-600'
+    case 'less_fresh':
+      return 'bg-yellow-200 dark:bg-yellow-900/50 text-yellow-900 dark:text-yellow-100 border-yellow-400 dark:border-yellow-600'
+    case 'starting_to_rot':
+      return 'bg-orange-200 dark:bg-orange-900/50 text-orange-900 dark:text-orange-100 border-orange-400 dark:border-orange-600'
+    case 'rotten':
+      return 'bg-red-200 dark:bg-red-900/50 text-red-900 dark:text-red-100 border-red-400 dark:border-red-600'
     default:
-      return 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600'
+      return 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-400 dark:border-gray-600'
   }
 }
+
+function formatClassName(className: string): string {
+  return className
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+
 
 export function PredictionDisplay({ prediction, label, detected }: PredictionDisplayProps) {
   if (!detected) {
@@ -60,32 +70,9 @@ export function PredictionDisplay({ prediction, label, detected }: PredictionDis
         <CardTitle className="text-base">{label}</CardTitle>
         <CardDescription>Freshness Classification</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         <div className={`p-4 rounded-lg border-2 ${colorClass} text-center`}>
-          <p className="font-bold text-lg">{prediction.class}</p>
-          <p className="text-sm">Confidence: {(prediction.confidence * 100).toFixed(1)}%</p>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-sm font-semibold">Probability Distribution:</p>
-          {Object.entries(prediction.probabilities).map(([cls, prob]) => (
-            <div key={cls} className="space-y-1">
-              <div className="flex justify-between text-xs">
-                <span>{cls}</span>
-                <span>{(prob * 100).toFixed(1)}%</span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all ${
-                    cls === prediction.class 
-                      ? 'bg-blue-500 dark:bg-blue-400' 
-                      : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                  style={{ width: `${prob * 100}%` }}
-                />
-              </div>
-            </div>
-          ))}
+          <p className="font-bold text-lg">{formatClassName(prediction.class)}</p>
         </div>
       </CardContent>
     </Card>
