@@ -64,12 +64,15 @@ export function CameraPage() {
 
   const captureFrame = (): string | null => {
     if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext('2d')
+      const video = videoRef.current
+      const canvas = canvasRef.current
+      const context = canvas.getContext('2d')
       if (context) {
-        canvasRef.current.width = videoRef.current.videoWidth
-        canvasRef.current.height = videoRef.current.videoHeight
-        context.drawImage(videoRef.current, 0, 0)
-        return canvasRef.current.toDataURL('image/jpeg')
+        // Capture exactly what's displayed on screen
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight)
+        return canvas.toDataURL('image/jpeg', 0.9)
       }
     }
     return null
