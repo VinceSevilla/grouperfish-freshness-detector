@@ -20,6 +20,8 @@ export function CameraPage() {
   const [showResultsModal, setShowResultsModal] = useState(false)
   const [showWarningModal, setShowWarningModal] = useState(false)
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment")
+  const [capturedImage, setCapturedImage] = useState<string | null>(null)
+  const [showFlash, setShowFlash] = useState(false)
 
   useEffect(() => {
     return () => {
@@ -56,6 +58,7 @@ export function CameraPage() {
       const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
       tracks.forEach((track) => track.stop())
       setIsStreaming(false)
+      setCapturedImage(null)
     }
   }
 
@@ -75,12 +78,21 @@ export function CameraPage() {
   const analyzeFrame = async () => {
     try {
       setIsPredicting(true)
+      
+      // Show flash effect
+      setShowFlash(true)
+      setTimeout(() => setShowFlash(false), 200)
+      
       const base64Image = captureFrame()
 
       if (!base64Image) {
         setCameraError('Failed to capture frame')
+        setIsPredicting(false)
         return
       }
+
+      // Show captured image while analyzing
+      setCapturedImage(base64Image)
 
       // Remove data URL prefix
       const imageData = base64Image.replace(/^data:image\/\w+;base64,/, '')
@@ -142,10 +154,37 @@ export function CameraPage() {
                     ref={videoRef}
                     autoPlay
                     playsInline
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full object-cover ${isPredicting ? 'hidden' : ''}`}
                   />
+                  
+                  {/* Show captured image while analyzing */}
+                  {isPredicting && capturedImage && (
+                    <img 
+                      src={capturedImage} 
+                      alt="Captured frame" 
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+
+                  {/* Flash effect overlay */}
+                  {showFlash && (
+                    <div className="absolute inset-0 bg-white animate-pulse z-30" />
+                  )}
+
+                  {/* Loading indicator */}
+                  {isPredicting && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-20">
+                      <div className="text-center space-y-3">
+                        <div className="inline-block">
+                          <div className="animate-spin rounded-full h-12 w-12 border-4 border-white border-t-blue-500" />
+                        </div>
+                        <p className="text-white text-sm font-medium">Analyzing Image...</p>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Switch Camera Icon Button */}
-                  {isStreaming && (
+                  {isStreaming && !isPredicting && (
                     <button
                       onClick={toggleCamera}
                       className="absolute bottom-3 right-3 bg-white/80 hover:bg-white rounded-full p-2 shadow-lg z-20"
@@ -195,7 +234,10 @@ export function CameraPage() {
       {/* Results Modal */}
       <Modal
         isOpen={showResultsModal}
-        onClose={() => setShowResultsModal(false)}
+        onClose={() => {
+          setShowResultsModal(false)
+          setCapturedImage(null)
+        }}
         title="Fish Freshness Analysis Results"
         size="xl"
       >
@@ -293,7 +335,10 @@ export function CameraPage() {
       {predictions && (
         <PredictionWarningModal
           isOpen={showWarningModal}
-          onClose={() => setShowWarningModal(false)}
+          onClose={() => {
+            setShowWarningModal(false)
+            setCapturedImage(null)
+          }}
           onRetry={() => {
             setShowWarningModal(false)
             setShowResultsModal(true)

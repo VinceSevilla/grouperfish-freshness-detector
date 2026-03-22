@@ -42,6 +42,9 @@ try:
 except json.JSONDecodeError:
     cors_origins = ["http://localhost:5173", "http://localhost:3000"]
 
+print(f"[CORS] Environment variable CORS_ORIGINS: {cors_origins_str}")
+print(f"[CORS] Loaded origins: {cors_origins}")
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
