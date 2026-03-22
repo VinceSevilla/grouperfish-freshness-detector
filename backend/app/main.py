@@ -8,6 +8,7 @@ Handles image upload and real-time predictions
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import json
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import cv2
@@ -34,17 +35,17 @@ app = FastAPI(
 class CameraRequest(BaseModel):
     base64_image: str
 
+# Load CORS origins from environment variable
+cors_origins_str = os.getenv("CORS_ORIGINS", '["http://localhost:5173", "http://localhost:3000"]')
+try:
+    cors_origins = json.loads(cors_origins_str)
+except json.JSONDecodeError:
+    cors_origins = ["http://localhost:5173", "http://localhost:3000"]
+
 # Add CORS middleware
-# Allow all origins for debugging (not for production!)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        "https://grouperfish-freshness-detector.vercel.app"
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
