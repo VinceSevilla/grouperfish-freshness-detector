@@ -7,7 +7,12 @@ import os
 from pathlib import Path
 from typing import Optional
 import numpy as np
+
+# CRITICAL: Set random seed to match training initialization
+np.random.seed(42)
 import tensorflow as tf
+tf.random.set_seed(42)
+
 from tensorflow.keras.models import load_model
 from tensorflow.keras.applications.resnet50 import preprocess_input
 from tensorflow.keras.applications.mobilenet import preprocess_input as mobilenet_preprocess
@@ -33,19 +38,24 @@ class ModelLoader:
         self.gill_model: Optional[tf.keras.Model] = None
         print(f"[DEBUG] ModelLoader will load models from: {self.models_dir.resolve()}")
         
-        # Create ResNet50 feature extractor (2048 features)
+        # Create ResNet50 and MobileNetV1 EXACTLY as in training - RANDOM WEIGHTS
+        # ResNet50 is frozen, MobileNetV1 is trainable to learn meaningful features
+        print("[INIT] Creating ResNet50 feature extractor (weights=None - same as training)")
         self.resnet_model = tf.keras.applications.ResNet50(
-            weights='imagenet', 
-            include_top=False, 
-            pooling='avg'
+            weights=None, include_top=False, pooling='avg'
         )
+        self.resnet_model.trainable = False  # Frozen
+        print(f"✓ ResNet50: {self.resnet_model.output_shape[1]} features")
         
-        # Create MobileNetV1 feature extractor (1024 features)
+        print("[INIT] Creating MobileNetV1 feature extractor (weights=None - same as training)")
         self.mobilenet_model = tf.keras.applications.MobileNet(
-            weights='imagenet',
-            include_top=False,
-            pooling='avg'
+            weights=None, include_top=False, pooling='avg'
         )
+        self.mobilenet_model.trainable = True  # Trainable (learned during training)
+        print(f"✓ MobileNetV1: {self.mobilenet_model.output_shape[1]} features")
+        
+        # NOTE: No StandardScaler - BatchNormalization in the model handles normalization
+        print("[INIT] Using BatchNormalization for feature normalization (no external scalers)")
         
         self._load_models()
     
@@ -69,6 +79,10 @@ class ModelLoader:
         except Exception as e:
             print(f"Error loading models: {e}")
             raise
+    
+    def _load_scalers(self):
+        """DEPRECATED - Scalers no longer used. BatchNormalization handles normalization."""
+        pass
     
     def _flatten_glcm_features(self, glcm_dict: dict) -> np.ndarray:
         """Flatten GLCM feature dict into a 1D vector of exactly 29 features"""
@@ -148,6 +162,8 @@ class ModelLoader:
     
     def preprocess_image_mobilenet(self, image: np.ndarray) -> np.ndarray:
         """Preprocess image for MobileNetV1"""
+        from tensorflow.keras.applications.mobilenet import preprocess_input as mobilenet_preprocess_input
+        
         # Ensure uint8 first (0-255 range)
         if image.dtype != np.uint8:
             image = (image.clip(0, 255)).astype(np.uint8)
@@ -161,10 +177,11 @@ class ModelLoader:
             import cv2
             image = cv2.resize(image, (224, 224))
         
-        # Apply MobileNet preprocessing (expects uint8 0-255 or float32 0-1)
-        image = mobilenet_preprocess(image.astype(np.float32))
+        # Apply MobileNetV1 preprocessing (expects uint8 0-255 or float32 0-1)
+        image = mobilenet_preprocess_input(image.astype(np.float32))
         
         return image
+
     
     def apply_white_balance(self, img: np.ndarray) -> np.ndarray:
         """Minimal white balance - preserve natural color signature for real fish"""
@@ -228,22 +245,24 @@ class ModelLoader:
             cv2.imwrite(os.path.join(debug_dir, 'eye_brightness_heatmap.png'), heatmap)
             print(f"[DEBUG][EYE] Image brightness stats - min:{gray_version.min()}, max:{gray_version.max()}, mean:{gray_version.mean():.1f}")
 
-            # --- Extract features as in training (no additional preprocessing for eyes) ---
-            resnet_feat = self.resnet_model.predict(np.expand_dims(self.preprocess_image_resnet(image), axis=0), verbose=0)[0]
-            mobilenet_feat = self.mobilenet_model.predict(np.expand_dims(self.preprocess_image_mobilenet(image), axis=0), verbose=0)[0]
-            # CRITICAL FIX: Compute GLCM from uint8 image (0-255), not float32 (0-1)
+            # --- END-TO-END INFERENCE (matches training) ---
+            # Extract GLCM from uint8 image (0-255)
             glcm_dict = GLCMExtractor.compute_glcm_summary(img_to_save)
             glcm_feat = self._flatten_glcm_features(glcm_dict)
-            cnn_features = np.concatenate([resnet_feat, mobilenet_feat])
-            batch_cnn = np.expand_dims(cnn_features, axis=0)
-            batch_glcm = np.expand_dims(glcm_feat, axis=0)
+            
+            # Prepare inputs for end-to-end model
+            # Model expects: [raw_image (224,224,3), glcm_features (29,)]
+            batch_image = np.expand_dims(image, axis=0)  # Shape: (1, 224, 224, 3)
+            batch_glcm = np.expand_dims(glcm_feat, axis=0)  # Shape: (1, 29)
+            
             # Debug: print feature stats
-            print(f"[DEBUG][EYE] CNN features mean: {cnn_features.mean():.4f}, std: {cnn_features.std():.4f}, min: {cnn_features.min():.4f}, max: {cnn_features.max():.4f}")
+            print(f"[DEBUG][EYE] Image input shape: {batch_image.shape}, range: {image.min():.1f}-{image.max():.1f}")
             print(f"[DEBUG][EYE] GLCM features mean: {glcm_feat.mean():.4f}, std: {glcm_feat.std():.4f}, min: {glcm_feat.min():.4f}, max: {glcm_feat.max():.4f}, non-zero: {np.count_nonzero(glcm_feat)}/29")
-            print(f"[DEBUG][EYE] ResNet50 specific: mean={resnet_feat.mean():.4f}, top5: {np.sort(resnet_feat)[-5:]}")
-            print(f"[DEBUG][EYE] MobileNetV1 specific: mean={mobilenet_feat.mean():.4f}, top5: {np.sort(mobilenet_feat)[-5:]}")
-            predictions = self.eye_model.predict([batch_cnn, batch_glcm], verbose=0)
+            
+            # Run prediction through end-to-end model (with ResNet50 + MobileNetV1 as layers)
+            predictions = self.eye_model.predict([batch_image, batch_glcm], verbose=0)
             print(f"[DEBUG][EYE] Raw prediction probabilities: {predictions[0]}")
+            
             class_idx = np.argmax(predictions[0])
             confidence = float(predictions[0][class_idx])
             result = {
@@ -324,22 +343,24 @@ class ModelLoader:
             cv2.imwrite(os.path.join(debug_dir, 'gill_red_heatmap.png'), heatmap)
             print(f"[DEBUG][GILL] Image color stats - R_mean:{img_to_save[:,:,2].mean():.1f}, G_mean:{img_to_save[:,:,1].mean():.1f}, B_mean:{img_to_save[:,:,0].mean():.1f}")
             
-            # --- Extract features as in training ---
-            resnet_feat = self.resnet_model.predict(np.expand_dims(self.preprocess_image_resnet(image), axis=0), verbose=0)[0]
-            mobilenet_feat = self.mobilenet_model.predict(np.expand_dims(self.preprocess_image_mobilenet(image), axis=0), verbose=0)[0]
-            # CRITICAL FIX: Compute GLCM from uint8 image (0-255), not float32 (0-1)
+            # --- END-TO-END INFERENCE (matches training) ---
+            # Extract GLCM from uint8 image (0-255)
             glcm_dict = GLCMExtractor.compute_glcm_summary(img_to_save)
             glcm_feat = self._flatten_glcm_features(glcm_dict)
-            cnn_features = np.concatenate([resnet_feat, mobilenet_feat])
-            batch_cnn = np.expand_dims(cnn_features, axis=0)
-            batch_glcm = np.expand_dims(glcm_feat, axis=0)
+            
+            # Prepare inputs for end-to-end model
+            # Model expects: [raw_image (224,224,3), glcm_features (29,)]
+            batch_image = np.expand_dims(image, axis=0)  # Shape: (1, 224, 224, 3)
+            batch_glcm = np.expand_dims(glcm_feat, axis=0)  # Shape: (1, 29)
+            
             # Debug: print feature stats
-            print(f"[DEBUG][GILL] CNN features mean: {cnn_features.mean():.4f}, std: {cnn_features.std():.4f}, min: {cnn_features.min():.4f}, max: {cnn_features.max():.4f}")
+            print(f"[DEBUG][GILL] Image input shape: {batch_image.shape}, range: {image.min():.1f}-{image.max():.1f}")
             print(f"[DEBUG][GILL] GLCM features mean: {glcm_feat.mean():.4f}, std: {glcm_feat.std():.4f}, min: {glcm_feat.min():.4f}, max: {glcm_feat.max():.4f}, non-zero: {np.count_nonzero(glcm_feat)}/29")
-            print(f"[DEBUG][GILL] ResNet50 specific: mean={resnet_feat.mean():.4f}, top5: {np.sort(resnet_feat)[-5:]}")
-            print(f"[DEBUG][GILL] MobileNetV1 specific: mean={mobilenet_feat.mean():.4f}, top5: {np.sort(mobilenet_feat)[-5:]}")
-            predictions = self.gill_model.predict([batch_cnn, batch_glcm], verbose=0)
+            
+            # Run prediction through end-to-end model (with ResNet50 + MobileNetV1 as layers)
+            predictions = self.gill_model.predict([batch_image, batch_glcm], verbose=0)
             print(f"[DEBUG][GILL] Raw prediction probabilities: {predictions[0]}")
+            
             class_idx = np.argmax(predictions[0])
             confidence = float(predictions[0][class_idx])
             result = {
