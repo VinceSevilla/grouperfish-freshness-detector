@@ -11,6 +11,7 @@ import { PredictionResponse } from '@/types'
 export function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [rotation, setRotation] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [predictions, setPredictions] = useState<PredictionResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -18,6 +19,7 @@ export function UploadPage() {
   const [showWarningModal, setShowWarningModal] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragOverRef = useRef(false)
+  const previewImageRef = useRef<HTMLImageElement>(null)
 
   const handleFileSelect = (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -26,6 +28,7 @@ export function UploadPage() {
     }
 
     setSelectedFile(file)
+    setRotation(0)
     setError(null)
     setPredictions(null)
     setShowResultsModal(false)
@@ -35,6 +38,46 @@ export function UploadPage() {
       setPreview(e.target?.result as string)
     }
     reader.readAsDataURL(file)
+  }
+
+  const rotateImage = (degrees: number) => {
+    setRotation((prev) => (prev + degrees + 360) % 360)
+  }
+
+  const getRotatedImageFile = async (): Promise<File> => {
+    if (rotation === 0 || !previewImageRef.current || !selectedFile) {
+      return selectedFile!
+    }
+
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')!
+        
+        // Calculate new dimensions based on rotation
+        const radians = (rotation * Math.PI) / 180
+        const cos = Math.abs(Math.cos(radians))
+        const sin = Math.abs(Math.sin(radians))
+        
+        canvas.width = img.width * cos + img.height * sin
+        canvas.height = img.height * cos + img.width * sin
+        
+        // Move to center, rotate, and draw
+        ctx.translate(canvas.width / 2, canvas.height / 2)
+        ctx.rotate(radians)
+        ctx.drawImage(img, -img.width / 2, -img.height / 2)
+        
+        canvas.toBlob((blob) => {
+          const rotatedFile = new File([blob!], selectedFile!.name, {
+            type: selectedFile!.type,
+            lastModified: Date.now(),
+          })
+          resolve(rotatedFile)
+        }, selectedFile!.type)
+      }
+      img.src = preview!
+    })
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -68,7 +111,11 @@ export function UploadPage() {
     try {
       setIsLoading(true)
       setError(null)
-      const response = await predictionsAPI.uploadAndPredict(selectedFile)
+      
+      // Get rotated file if rotation applied, otherwise use original
+      const fileToAnalyze = await getRotatedImageFile()
+      
+      const response = await predictionsAPI.uploadAndPredict(fileToAnalyze)
       setPredictions(response)
       
       // Check if there are missing predictions
@@ -91,6 +138,7 @@ export function UploadPage() {
   const resetForm = () => {
     setSelectedFile(null)
     setPreview(null)
+    setRotation(0)
     setPredictions(null)
     setError(null)
     setShowResultsModal(false)
@@ -158,10 +206,47 @@ export function UploadPage() {
                 {preview && (
                   <div className="space-y-4">
                     <div className="flex justify-center">
-                      <div className="relative bg-muted rounded-lg overflow-hidden max-w-md">
-                        <img src={preview} alt="Preview" className="w-full h-auto" />
+                      <div className="relative bg-muted rounded-lg overflow-visible max-w-md">
+                        <img 
+                          ref={previewImageRef}
+                          src={preview} 
+                          alt="Preview" 
+                          className="w-full h-auto transition-transform duration-200"
+                          style={{
+                            transform: `rotate(${rotation}deg)`,
+                          }}
+                        />
+                        
+                        {/* Rotation Controls - Bottom Right Corner */}
+                        <div className="absolute bottom-2 right-2 flex gap-2">
+                          <Button
+                            onClick={() => rotateImage(-90)}
+                            variant="outline"
+                            size="sm"
+                            title="Rotate Left"
+                            className="h-10 w-10 p-0 bg-white/90 hover:bg-white dark:bg-slate-900/90 dark:hover:bg-slate-900 dark:text-white border-gray-300 dark:border-gray-600 backdrop-blur-sm"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M1 4v6h6"/>
+                              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                            </svg>
+                          </Button>
+                          <Button
+                            onClick={() => rotateImage(90)}
+                            variant="outline"
+                            size="sm"
+                            title="Rotate Right"
+                            className="h-10 w-10 p-0 bg-white/90 hover:bg-white dark:bg-slate-900/90 dark:hover:bg-slate-900 dark:text-white border-gray-300 dark:border-gray-600 backdrop-blur-sm"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M23 4v6h-6"/>
+                              <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/>
+                            </svg>
+                          </Button>
+                        </div>
                       </div>
                     </div>
+
                     <p className="text-center text-sm font-medium">
                       {selectedFile?.name}
                     </p>
@@ -177,15 +262,17 @@ export function UploadPage() {
                 {/* Action Buttons */}
                 <div className="flex justify-center space-x-4">
                   <Button
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={resetForm}
                     variant="outline"
-                    className={selectedFile ? "" : "hidden"}
+                    className={`${selectedFile ? "" : "hidden"} dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-white dark:border-slate-700`}
                   >
-                    Change Image
+                    Upload New Image
                   </Button>
                   <Button
                     onClick={analyzeImage}
                     disabled={!selectedFile || isLoading}
+                    variant="outline"
+                    className="dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-white dark:border-slate-700"
                   >
                     {isLoading ? 'Analyzing...' : 'Analyze Image'}
                   </Button>
@@ -196,14 +283,10 @@ export function UploadPage() {
                     <Button 
                       onClick={() => setShowResultsModal(true)}
                       variant="outline"
+                      className="dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-white dark:border-slate-700"
                     >
                       View Result
                     </Button>
-                    <div>
-                      <Button onClick={resetForm} variant="ghost">
-                        Upload New Image
-                      </Button>
-                    </div>
                   </div>
                 )}
               </CardContent>
@@ -299,10 +382,18 @@ export function UploadPage() {
 
           {/* Modal Actions */}
           <div className="flex justify-center space-x-4 pt-4 border-t">
-            <Button onClick={resetForm} variant="outline">
+            <Button 
+              onClick={resetForm} 
+              variant="outline"
+              className="dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-white dark:border-slate-700"
+            >
               Upload New Image
             </Button>
-            <Button onClick={() => setShowResultsModal(false)}>
+            <Button 
+              onClick={() => setShowResultsModal(false)}
+              variant="outline"
+              className="dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-white dark:border-slate-700"
+            >
               Close Results
             </Button>
           </div>
