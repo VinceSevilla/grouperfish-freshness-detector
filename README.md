@@ -4,11 +4,11 @@ A hybrid deep learning system that detects fish freshness by analyzing eyes and 
 
 ## Features
 
-- 🎯 **Dual Detection System**: Separate models for eyes and gills analysis
-- 🤖 **Hybrid Approach**: Combines predictions from both models for accurate freshness classification
-- 📊 **4-Class Classification**: Fresh, Less Fresh, Starting to Rot, Rotten
-- 🚀 **Pre-trained Models**: Ready-to-use trained models included via Git LFS
-- 🖼️ **Image-Based**: Works with both camera and uploaded images
+-  **Dual Detection System**: Separate models for eyes and gills analysis
+-  **Hybrid Approach**: Combines predictions from both models for accurate freshness classification
+-  **4-Class Classification**: Fresh, Less Fresh, Starting to Rot, Rotten
+-  **Pre-trained Models**: Ready-to-use trained models included via Git LFS
+-  **Image-Based**: Works with both camera and uploaded images
 
 ## Prerequisites
 
