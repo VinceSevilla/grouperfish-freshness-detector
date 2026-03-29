@@ -103,10 +103,10 @@ npm install
 
 ```bash
 cd backend
-python -m app.main
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
 
-API will run on `http://localhost:5000`
+API will run on `http://localhost:8001`
 
 ### Frontend (Development)
 
