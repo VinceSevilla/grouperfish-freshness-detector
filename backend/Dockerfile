@@ -14,12 +14,12 @@ RUN git lfs install --skip-repo
 # Set work directory
 WORKDIR /app
 
-# Copy Git metadata for LFS to work
-COPY .git .git
-COPY .gitattributes .gitattributes
+# Copy entire repo (includes .git and .gitattributes if present)
+COPY . .
 
-# Download LFS files
-RUN git lfs pull --include="results/*.h5" || true
+# Create .gitattributes if it doesn't exist (for LFS tracking)
+RUN if [ ! -f .gitattributes ]; then echo "*.h5 filter=lfs diff=lfs merge=lfs -text" > .gitattributes; fi && \
+    git lfs pull --include="results/*.h5" 2>/dev/null || echo "LFS pull completed or skipped"
 
 # Copy requirements
 COPY requirements.txt ./
