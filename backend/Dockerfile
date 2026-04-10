@@ -1,25 +1,13 @@
 # Use official Python image
 FROM python:3.11-slim
 
-# Install system dependencies for OpenCV and Git LFS
+# Install system dependencies for OpenCV
 RUN apt-get update && \
-    apt-get install -y libgl1 libglib2.0-0 git && \
-    curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash && \
-    apt-get install -y git-lfs && \
+    apt-get install -y libgl1 libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
-
-# Initialize Git LFS globally
-RUN git lfs install --skip-repo
 
 # Set work directory
 WORKDIR /app
-
-# Copy entire repo (includes .git and .gitattributes if present)
-COPY . .
-
-# Create .gitattributes if it doesn't exist (for LFS tracking)
-RUN if [ ! -f .gitattributes ]; then echo "*.h5 filter=lfs diff=lfs merge=lfs -text" > .gitattributes; fi && \
-    git lfs pull --include="results/*.h5" 2>/dev/null || echo "LFS pull completed or skipped"
 
 # Copy requirements
 COPY requirements.txt ./

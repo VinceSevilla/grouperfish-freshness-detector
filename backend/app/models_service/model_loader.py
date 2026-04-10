@@ -57,27 +57,36 @@ class ModelLoader:
         # NOTE: No StandardScaler - BatchNormalization in the model handles normalization
         print("[INIT] Using BatchNormalization for feature normalization (no external scalers)")
         
-        self._load_models()
+        # LAZY LOADING: Models will be loaded on first use, not at startup
+        print("[INIT] Models will be loaded on first use (lazy loading)")
+    
+    def _ensure_models_loaded(self):
+        """Ensure models are loaded before use (lazy loading)"""
+        if self.eye_model is None or self.gill_model is None:
+            self._load_models()
     
     def _load_models(self):
-        """Load eye and gill models only"""
+        """Load eye and gill models on demand (lazy loading)"""
         try:
             eye_path = self.models_dir / 'hybrid_eyes_model.h5'
             print(f"[DEBUG] Eye model path: {eye_path.resolve()}")
             if eye_path.exists():
+                print(f"[LOAD] Loading eye model from {eye_path}...")
                 self.eye_model = load_model(str(eye_path), compile=False)
-                print(f"✓ Loaded eye model")
+                print(f"✓ Loaded eye model successfully")
             else:
                 print(f"⚠ Eye model not found: {eye_path}")
             gill_path = self.models_dir / 'hybrid_gills_model.h5'
             print(f"[DEBUG] Gill model path: {gill_path.resolve()}")
             if gill_path.exists():
+                print(f"[LOAD] Loading gill model from {gill_path}...")
                 self.gill_model = load_model(str(gill_path), compile=False)
-                print(f"✓ Loaded gill model")
+                print(f"✓ Loaded gill model successfully")
             else:
                 print(f"⚠ Gill model not found: {gill_path}")
         except Exception as e:
             print(f"Error loading models: {e}")
+            traceback.print_exc()
             raise
     
     def _load_scalers(self):
@@ -199,6 +208,9 @@ class ModelLoader:
             eye_bbox: Optional bounding box (x, y, w, h) for eye ROI. If provided, will use EyeDetector's extract_eye_roi.
         Returns: dict with 'class', 'confidence', 'probabilities', and optionally 'glcm_features'
         """
+        # Ensure models are loaded (lazy loading on first use)
+        self._ensure_models_loaded()
+        
         if self.eye_model is None:
             return None
         try:
@@ -303,6 +315,9 @@ class ModelLoader:
             include_glcm: If True, include GLCM texture features in output
         Returns: dict with 'class', 'confidence', 'probabilities', and optionally 'glcm_features'
         """
+        # Ensure models are loaded (lazy loading on first use)
+        self._ensure_models_loaded()
+        
         if self.gill_model is None:
             return None
         try:
