@@ -1,13 +1,25 @@
 # Use official Python image
 FROM python:3.11-slim
 
-# Install system dependencies for OpenCV
+# Install system dependencies for OpenCV and Git LFS
 RUN apt-get update && \
-    apt-get install -y libgl1 libglib2.0-0 && \
+    apt-get install -y libgl1 libglib2.0-0 git && \
+    curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash && \
+    apt-get install -y git-lfs && \
     rm -rf /var/lib/apt/lists/*
+
+# Initialize Git LFS globally
+RUN git lfs install --skip-repo
 
 # Set work directory
 WORKDIR /app
+
+# Copy Git metadata for LFS to work
+COPY .git .git
+COPY .gitattributes .gitattributes
+
+# Download LFS files
+RUN git lfs pull --include="results/*.h5" || true
 
 # Copy requirements
 COPY requirements.txt ./
@@ -19,8 +31,6 @@ RUN pip install --upgrade pip setuptools wheel && \
 
 # Copy app code
 COPY . .
-# Ensure model files are copied (even if .dockerignore is present)
-COPY results/*.h5 /app/results/
 
 # Expose port
 EXPOSE 8001
