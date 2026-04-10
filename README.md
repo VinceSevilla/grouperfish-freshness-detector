@@ -1,6 +1,6 @@
-# Fish Freshness Detection
+# Grouper Fish Freshness Detection
 
-A hybrid deep learning system that detects fish freshness by analyzing eyes and gills using separate CNN models trained from scratch.
+A hybrid deep learning system that detects Grouper fish freshness by analyzing eyes and gills using separate CNN models trained from scratch.
 
 ## Features
 
