@@ -1,5 +1,3 @@
-from fastapi import UploadFile, File
-import shutil
 """
 FastAPI Application for Fish Freshness Detection
 Handles image upload and real-time predictions
@@ -7,6 +5,8 @@ Handles image upload and real-time predictions
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 import os
 import json
 from fastapi.responses import JSONResponse
@@ -17,6 +17,8 @@ from pathlib import Path
 import io
 from PIL import Image
 import base64
+import sys
+import traceback
 
 
 from app.detection.eye_detector import EyeDetector
@@ -35,8 +37,27 @@ app = FastAPI(
 class CameraRequest(BaseModel):
     base64_image: str
 
+
+# Request logging middleware (first - logs all requests at ASGI level)
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        msg = f"[REQUEST_ASGI] {request.method} {request.url.path} - Content-Length: {request.headers.get('content-length', 'unknown')}"
+        print(msg, file=sys.stderr)
+        sys.stderr.flush()
+        try:
+            response = await call_next(request)
+            print(f"[REQUEST_ASGI] Response status: {response.status_code}", file=sys.stderr)
+            sys.stderr.flush()
+            return response
+        except Exception as e:
+            print(f"[REQUEST_ASGI_ERROR] Exception during request: {type(e).__name__}: {str(e)}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
+            raise
+
+app.add_middleware(RequestLoggingMiddleware)
+
 # Add CORS middleware - allow all origins for now
-import sys
 print("[CORS] Configuring CORS middleware...", file=sys.stderr)
 sys.stderr.flush()
 app.add_middleware(
@@ -52,7 +73,6 @@ sys.stderr.flush()
 # Global exception handler to catch ALL errors
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    import traceback
     msg = f"[GLOBAL_ERROR] {type(exc).__name__}: {str(exc)}"
     print(msg, file=sys.stderr)
     traceback.print_exc(file=sys.stderr)
