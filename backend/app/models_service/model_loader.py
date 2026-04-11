@@ -69,15 +69,25 @@ class ModelLoader:
     
     def _download_from_huggingface(self, filename: str):
         """Download model from Hugging Face Hub if not available locally"""
+        import sys
         hf_repo = os.getenv("HF_MODEL_REPO", "")
         hf_token = os.getenv("HF_TOKEN", None)
         
+        msg = f"[HF] Starting download for {filename}"
+        print(msg, file=sys.stderr)
+        print(f"[HF] HF_MODEL_REPO={hf_repo}", file=sys.stderr)
+        print(f"[HF] HF_TOKEN set: {bool(hf_token)}", file=sys.stderr)
+        sys.stderr.flush()
+        
         if not hf_repo:
-            print(f"⚠ HF_MODEL_REPO not set, skipping HF download for {filename}")
+            msg = f"⚠ HF_MODEL_REPO not set, cannot download {filename}"
+            print(msg, file=sys.stderr)
+            sys.stderr.flush()
             return None
         
         try:
-            print(f"[HF] Downloading {filename} from {hf_repo}...")
+            print(f"[HF] Downloading {filename} from {hf_repo}...", file=sys.stderr)
+            sys.stderr.flush()
             file_path = hf_hub_download(
                 repo_id=hf_repo,
                 filename=filename,
@@ -85,58 +95,100 @@ class ModelLoader:
                 token=hf_token,
                 local_dir=str(self.models_dir)
             )
-            print(f"✓ Downloaded {filename} to {file_path}")
+            print(f"✓ Downloaded {filename} to {file_path}", file=sys.stderr)
+            sys.stderr.flush()
             return Path(file_path)
         except Exception as e:
-            print(f"✗ Download failed for {filename}: {str(e)}")
-            traceback.print_exc()
+            msg = f"✗ Download failed for {filename}: {str(e)}"
+            print(msg, file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
             return None
     
     def _load_models(self):
         """Load eye and gill models on demand (lazy loading)"""
+        import sys
         try:
             eye_path = self.models_dir / 'hybrid_eyes_model.h5'
-            print(f"[DEBUG] Eye model path: {eye_path.resolve()}")
+            msg = f"[LOAD_MODELS] Eye model path: {eye_path.resolve()}"
+            print(msg, file=sys.stderr)
+            sys.stderr.flush()
+            
             if not eye_path.exists():
-                print(f"[HF] Eye model not found locally, attempting HF download...")
+                msg = f"[LOAD_MODELS] Eye model not found locally, attempting HF download..."
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
                 self._download_from_huggingface('hybrid_eyes_model.h5')
             
             if eye_path.exists():
                 # Check if it's a valid model file (not a Git LFS pointer)
                 file_size = eye_path.stat().st_size
+                msg = f"[LOAD_MODELS] Eye model file size: {file_size} bytes"
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
+                
                 if file_size < 100000:  # Less than 100KB = likely LFS pointer
-                    print(f"✗ Eye model appears to be a Git LFS pointer (size: {file_size} bytes)")
+                    msg = f"✗ Eye model appears to be a Git LFS pointer (size: {file_size} bytes)"
+                    print(msg, file=sys.stderr)
+                    sys.stderr.flush()
                     raise HTTPException(status_code=503, detail="Models not available (Git LFS not configured on server). Please configure model hosting.")
-                print(f"[LOAD] Loading eye model from {eye_path}...")
+                
+                msg = f"[LOAD_MODELS] Loading eye model from {eye_path}..."
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
                 self.eye_model = load_model(str(eye_path), compile=False)
-                print(f"✓ Loaded eye model successfully")
+                msg = f"✓ Loaded eye model successfully"
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
             else:
-                print(f"✗ Eye model not found and download failed: {eye_path}")
+                msg = f"✗ Eye model not found and download failed: {eye_path}"
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
                 raise HTTPException(status_code=503, detail="Eye model file not found")
             
             gill_path = self.models_dir / 'hybrid_gills_model.h5'
-            print(f"[DEBUG] Gill model path: {gill_path.resolve()}")
+            msg = f"[LOAD_MODELS] Gill model path: {gill_path.resolve()}"
+            print(msg, file=sys.stderr)
+            sys.stderr.flush()
+            
             if not gill_path.exists():
-                print(f"[HF] Gill model not found locally, attempting HF download...")
+                msg = f"[LOAD_MODELS] Gill model not found locally, attempting HF download..."
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
                 self._download_from_huggingface('hybrid_gills_model.h5')
             
             if gill_path.exists():
                 # Check if it's a valid model file (not a Git LFS pointer)
                 file_size = gill_path.stat().st_size
+                msg = f"[LOAD_MODELS] Gill model file size: {file_size} bytes"
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
+                
                 if file_size < 100000:  # Less than 100KB = likely LFS pointer
-                    print(f"✗ Gill model appears to be a Git LFS pointer (size: {file_size} bytes)")
+                    msg = f"✗ Gill model appears to be a Git LFS pointer (size: {file_size} bytes)"
+                    print(msg, file=sys.stderr)
+                    sys.stderr.flush()
                     raise HTTPException(status_code=503, detail="Models not available (Git LFS not configured on server). Please configure model hosting.")
-                print(f"[LOAD] Loading gill model from {gill_path}...")
+                
+                msg = f"[LOAD_MODELS] Loading gill model from {gill_path}..."
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
                 self.gill_model = load_model(str(gill_path), compile=False)
-                print(f"✓ Loaded gill model successfully")
+                msg = f"✓ Loaded gill model successfully"
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
             else:
-                print(f"✗ Gill model not found and download failed: {gill_path}")
+                msg = f"✗ Gill model not found and download failed: {gill_path}"
+                print(msg, file=sys.stderr)
+                sys.stderr.flush()
                 raise HTTPException(status_code=503, detail="Gill model file not found")
         except HTTPException:
             raise  # Re-raise HTTPException as-is
         except Exception as e:
-            print(f"Error loading models: {e}")
-            traceback.print_exc()
+            msg = f"Error loading models: {e}"
+            print(msg, file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
             raise HTTPException(status_code=503, detail=f"Error loading models: {str(e)}")
     
     def _load_scalers(self):
