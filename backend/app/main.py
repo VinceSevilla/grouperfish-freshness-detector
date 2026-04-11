@@ -49,6 +49,19 @@ app.add_middleware(
 print("[CORS] CORS middleware configured to allow all origins", file=sys.stderr)
 sys.stderr.flush()
 
+# Global exception handler to catch ALL errors
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    import traceback
+    msg = f"[GLOBAL_ERROR] {type(exc).__name__}: {str(exc)}"
+    print(msg, file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    sys.stderr.flush()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal error: {str(exc)}"},
+    )
+
 # TEMPORARY: Admin endpoint to upload .h5 model files
 @app.post("/admin/upload-model/")
 async def upload_model(file: UploadFile = File(...)):
