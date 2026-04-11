@@ -36,7 +36,9 @@ class CameraRequest(BaseModel):
     base64_image: str
 
 # Add CORS middleware - allow all origins for now
-print("[CORS] Configuring CORS middleware...")
+import sys
+print("[CORS] Configuring CORS middleware...", file=sys.stderr)
+sys.stderr.flush()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,7 +46,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-print("[CORS] CORS middleware configured to allow all origins")
+print("[CORS] CORS middleware configured to allow all origins", file=sys.stderr)
+sys.stderr.flush()
 
 # TEMPORARY: Admin endpoint to upload .h5 model files
 @app.post("/admin/upload-model/")
