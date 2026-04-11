@@ -14,3 +14,4 @@ pydantic==2.4.2
 pydantic-settings==2.0.3
 python-dotenv==1.0.0
 aiofiles==23.2.1
+huggingface-hub==0.19.4
