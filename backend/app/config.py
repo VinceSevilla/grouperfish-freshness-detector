@@ -15,7 +15,8 @@ if env_file.exists():
 DEBUG = os.getenv("DEBUG", "False") == "True"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
-API_PORT = int(os.getenv("API_PORT", "8000"))
+# Railway uses PORT, others might use API_PORT
+API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
 
 # CORS Configuration
 CORS_ORIGINS = os.getenv(

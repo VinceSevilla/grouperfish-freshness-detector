@@ -35,6 +35,13 @@ print("[APP_INIT] FastAPI app object created successfully", file=sys.stderr)
 sys.stderr.flush()
 
 
+# Check what port environment variable is set
+import os
+port_from_env = os.getenv("PORT", "NOT SET")
+print(f"[PORT_CONFIG] PORT environment variable: {port_from_env}", file=sys.stderr)
+sys.stderr.flush()
+
+
 class CameraRequest(BaseModel):
     base64_image: str
 
