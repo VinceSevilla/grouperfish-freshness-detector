@@ -40,7 +40,13 @@ cors_origins_str = os.getenv("CORS_ORIGINS", '["http://localhost:5173", "http://
 try:
     cors_origins = json.loads(cors_origins_str)
 except json.JSONDecodeError:
-    cors_origins = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://192.168.1.23:5173",
+        "https://grouperfish-freshness-detector.vercel.app",
+        "https://grouperfish-freshness-detector-vinces-projects-ee3b7aaf.vercel.app"
+    ]
 
 print(f"[CORS] Environment variable CORS_ORIGINS: {cors_origins_str}")
 print(f"[CORS] Loaded origins: {cors_origins}")
