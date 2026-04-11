@@ -31,6 +31,8 @@ app = FastAPI(
     description="Real-time fish freshness classification using eyes and gills",
     version="1.0.0"
 )
+print("[APP_INIT] FastAPI app object created successfully", file=sys.stderr)
+sys.stderr.flush()
 
 
 class CameraRequest(BaseModel):
@@ -49,13 +51,6 @@ app.add_middleware(
 )
 print("[CORS] CORS middleware configured to allow all origins", file=sys.stderr)
 sys.stderr.flush()
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Log when app is ready to receive requests"""
-    print("[STARTUP_EVENT] FastAPI app is ready to receive requests!", file=sys.stderr)
-    sys.stderr.flush()
 
 
 # TEMPORARY: Admin endpoint to upload .h5 model files
@@ -385,6 +380,9 @@ async def detect_regions(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+print("[MAIN_MODULE_LOADED] All routes registered successfully!", file=sys.stderr)
+sys.stderr.flush()
 
 if __name__ == "__main__":
     import uvicorn
