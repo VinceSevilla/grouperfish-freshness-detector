@@ -50,6 +50,14 @@ app.add_middleware(
 print("[CORS] CORS middleware configured to allow all origins", file=sys.stderr)
 sys.stderr.flush()
 
+
+@app.on_event("startup")
+async def startup_event():
+    """Log when app is ready to receive requests"""
+    print("[STARTUP_EVENT] FastAPI app is ready to receive requests!", file=sys.stderr)
+    sys.stderr.flush()
+
+
 # TEMPORARY: Admin endpoint to upload .h5 model files
 @app.post("/admin/upload-model/")
 async def upload_model(file: UploadFile = File(...)):
