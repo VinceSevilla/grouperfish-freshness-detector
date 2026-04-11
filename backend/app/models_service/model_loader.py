@@ -38,29 +38,10 @@ class ModelLoader:
         self.models_dir = Path(models_dir)
         self.eye_model: Optional[tf.keras.Model] = None
         self.gill_model: Optional[tf.keras.Model] = None
-        print(f"[DEBUG] ModelLoader will load models from: {self.models_dir.resolve()}")
-        
-        # Create ResNet50 and MobileNetV1 EXACTLY as in training - RANDOM WEIGHTS
-        # ResNet50 is frozen, MobileNetV1 is trainable to learn meaningful features
-        print("[INIT] Creating ResNet50 feature extractor (weights=None - same as training)")
-        self.resnet_model = tf.keras.applications.ResNet50(
-            weights=None, include_top=False, pooling='avg'
-        )
-        self.resnet_model.trainable = False  # Frozen
-        print(f"✓ ResNet50: {self.resnet_model.output_shape[1]} features")
-        
-        print("[INIT] Creating MobileNetV1 feature extractor (weights=None - same as training)")
-        self.mobilenet_model = tf.keras.applications.MobileNet(
-            weights=None, include_top=False, pooling='avg'
-        )
-        self.mobilenet_model.trainable = True  # Trainable (learned during training)
-        print(f"✓ MobileNetV1: {self.mobilenet_model.output_shape[1]} features")
-        
-        # NOTE: No StandardScaler - BatchNormalization in the model handles normalization
-        print("[INIT] Using BatchNormalization for feature normalization (no external scalers)")
-        
-        # LAZY LOADING: Models will be loaded on first use, not at startup
-        print("[INIT] Models will be loaded on first use (lazy loading)")
+        self.resnet_model: Optional[tf.keras.Model] = None
+        self.mobilenet_model: Optional[tf.keras.Model] = None
+        print(f"[INIT] ModelLoader initialized for: {self.models_dir.resolve()}")
+        print("[INIT] Feature extractors and models will be created on first use (lazy loading)")
     
     def _ensure_models_loaded(self):
         """Ensure models are loaded before use (lazy loading)"""
