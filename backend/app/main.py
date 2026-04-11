@@ -129,6 +129,9 @@ async def predict_from_upload(file: UploadFile = File(...)):
     Predict freshness from uploaded image
     Detects eyes and gills, returns predictions for both
     """
+    import sys
+    print(f"[UPLOAD_ENDPOINT] Request received! File: {file.filename}", file=sys.stderr)
+    sys.stderr.flush()
     try:
         # Read image
         contents = await file.read()
