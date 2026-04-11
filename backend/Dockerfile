@@ -21,7 +21,7 @@ RUN pip install --upgrade pip setuptools wheel && \
 COPY . .
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8001
 
-# Start FastAPI app - listen on PORT environment variable (default 8080)
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# Start FastAPI app - listen on API_PORT environment variable (default 8001), fallback to PORT (Railway's standard)
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT:-${PORT:-8001}}"]
