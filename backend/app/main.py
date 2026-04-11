@@ -139,6 +139,8 @@ def convert_base64_to_image(base64_str: str) -> np.ndarray:
 @app.get("/health")
 async def health_check():
     """Health check endpoint - simple status check"""
+    print("[HEALTH] Health endpoint called", file=sys.stderr)
+    sys.stderr.flush()
     return {
         "status": "ok",
         "message": "API is running"
