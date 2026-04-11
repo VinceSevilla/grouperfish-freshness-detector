@@ -109,11 +109,13 @@ class ModelLoader:
                 sys.stderr.flush()
                 
                 if file_size < 100000:  # Less than 100KB = likely LFS pointer
-                    msg = f"✗ Eye model appears to be a Git LFS pointer (size: {file_size} bytes)"
+                    msg = f"⚠ Eye model is a Git LFS pointer (size: {file_size} bytes), removing and downloading from HF..."
                     print(msg, file=sys.stderr)
                     sys.stderr.flush()
-                    raise HTTPException(status_code=503, detail="Models not available (Git LFS not configured on server). Please configure model hosting.")
+                    eye_path.unlink()  # Delete the pointer file
+                    self._download_from_huggingface('hybrid_eyes_model.h5')
                 
+            if eye_path.exists():
                 msg = f"[LOAD_MODELS] Loading eye model from {eye_path}..."
                 print(msg, file=sys.stderr)
                 sys.stderr.flush()
@@ -146,11 +148,13 @@ class ModelLoader:
                 sys.stderr.flush()
                 
                 if file_size < 100000:  # Less than 100KB = likely LFS pointer
-                    msg = f"✗ Gill model appears to be a Git LFS pointer (size: {file_size} bytes)"
+                    msg = f"⚠ Gill model is a Git LFS pointer (size: {file_size} bytes), removing and downloading from HF..."
                     print(msg, file=sys.stderr)
                     sys.stderr.flush()
-                    raise HTTPException(status_code=503, detail="Models not available (Git LFS not configured on server). Please configure model hosting.")
+                    gill_path.unlink()  # Delete the pointer file
+                    self._download_from_huggingface('hybrid_gills_model.h5')
                 
+            if gill_path.exists():
                 msg = f"[LOAD_MODELS] Loading gill model from {gill_path}..."
                 print(msg, file=sys.stderr)
                 sys.stderr.flush()
