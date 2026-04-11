@@ -7,6 +7,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import json
+import shutil
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import cv2
@@ -62,20 +63,39 @@ async def upload_model(file: UploadFile = File(...)):
     return {"status": "success", "filename": file.filename}
 
 
-# Initialize models and detectors
+# Initialize models and detectors (lazy-loaded on first use)
 MODELS_DIR = Path(MODELS_PATH)
 print(f"[INIT] MODELS_PATH = {MODELS_PATH}")
 print(f"[INIT] MODELS_DIR = {MODELS_DIR}")
 print(f"[INIT] MODELS_DIR.exists() = {MODELS_DIR.exists()}")
 if MODELS_DIR.exists():
     print(f"[INIT] Files in MODELS_DIR: {list(MODELS_DIR.glob('*.h5'))}")
-eye_detector = EyeDetector()
-gills_detector = GillsDetector()
-model_loader = ModelLoader(str(MODELS_DIR))
+
+# Global detectors and model loader - created on first use (lazy loading)
+eye_detector = None
+gills_detector = None
+model_loader = None
+
+
+def _ensure_detectors_loaded():
+    """Lazily initialize detectors and model loader on first use"""
+    global eye_detector, gills_detector, model_loader
+    if eye_detector is None:
+        print("[INIT] Creating EyeDetector...")
+        eye_detector = EyeDetector()
+    if gills_detector is None:
+        print("[INIT] Creating GillsDetector...")
+        gills_detector = GillsDetector()
+    if model_loader is None:
+        print("[INIT] Creating ModelLoader...")
+        model_loader = ModelLoader(str(MODELS_DIR))
 
 
 def detect_and_extract_regions(image: np.ndarray) -> dict:
     """Detect and extract both eye and gill regions using separate detectors"""
+    global eye_detector, gills_detector
+    _ensure_detectors_loaded()
+    
     print(f"[MAIN] Starting detection on image: {image.shape}")
     
     # Detect eyes
@@ -115,11 +135,10 @@ def convert_base64_to_image(base64_str: str) -> np.ndarray:
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint - simple status check"""
     return {
         "status": "ok",
-        "eye_model_loaded": model_loader.eye_model is not None,
-        "gill_model_loaded": model_loader.gill_model is not None
+        "message": "API is running"
     }
 
 
@@ -129,6 +148,9 @@ async def predict_from_upload(file: UploadFile = File(...)):
     Predict freshness from uploaded image
     Detects eyes and gills, returns predictions for both
     """
+    global model_loader
+    _ensure_detectors_loaded()
+    
     import sys
     print(f"[UPLOAD_ENDPOINT] Request received! File: {file.filename}", file=sys.stderr)
     sys.stderr.flush()
@@ -229,6 +251,9 @@ async def predict_from_camera(payload: CameraRequest):
     """
     Predict freshness from camera frame (base64 encoded)
     """
+    global model_loader
+    _ensure_detectors_loaded()
+    
     try:
         # Decode image
         image_cv = convert_base64_to_image(payload.base64_image)
