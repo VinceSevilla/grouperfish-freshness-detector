@@ -123,14 +123,14 @@ export function CombinationSummary({ eyePrediction, gillPrediction }: Combinatio
   const colorClass = getRecommendationColor(overallClass)
 
   return (
-    <Card className="md:col-span-2 lg:col-span-3">
-      <CardHeader>
-        <CardTitle className="text-base">Combined Assessment</CardTitle>
-        <CardDescription>Summary based on both eye and gill analysis</CardDescription>
+    <Card className="sm:col-span-1 md:col-span-2 lg:col-span-3">
+      <CardHeader className="p-3 sm:p-6">
+        <CardTitle className="text-sm sm:text-base">Combined Assessment</CardTitle>
+        <CardDescription className="text-xs sm:text-sm">Summary based on both eye and gill analysis</CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className={`p-4 rounded-lg border-2 ${colorClass}`}>
-          <p className="text-sm leading-relaxed">{summary}</p>
+      <CardContent className="p-3 sm:p-6 pt-0 sm:pt-0">
+        <div className={`p-3 sm:p-4 rounded-lg border-2 ${colorClass}`}>
+          <p className="text-xs sm:text-sm leading-relaxed">{summary}</p>
         </div>
       </CardContent>
     </Card>

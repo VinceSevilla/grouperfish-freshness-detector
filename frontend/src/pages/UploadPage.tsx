@@ -302,16 +302,16 @@ export function UploadPage() {
         title="Fish Freshness Analysis Results"
         size="xl"
       >
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Annotated Image */}
           {predictions?.annotated_image && (
             <div className="text-center">
-              <h3 className="text-lg font-semibold mb-4">Detected Regions</h3>
-              <div className="bg-muted rounded-lg p-4">
+              <h3 className="text-base sm:text-lg font-semibold mb-4">Detected Regions</h3>
+              <div className="bg-muted rounded-lg p-3 sm:p-4 overflow-x-auto">
                 <img
                   src={`data:image/png;base64,${predictions.annotated_image}`}
                   alt="Annotated Detection"
-                  className="max-w-lg h-auto mx-auto rounded shadow-md"
+                  className="w-full max-w-sm sm:max-w-lg h-auto mx-auto rounded shadow-md"
                 />
               </div>
             </div>
@@ -319,7 +319,7 @@ export function UploadPage() {
 
           {/* Analysis Results */}
           {predictions && (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {/* Eye Analysis */}
               {predictions.eye_detected && predictions.eye_prediction ? (
                 <PredictionDisplay
@@ -381,7 +381,7 @@ export function UploadPage() {
           )}
 
           {/* Modal Actions */}
-          <div className="flex justify-center space-x-4 pt-4 border-t">
+          <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 pt-4 border-t">
             <Button 
               onClick={resetForm} 
               variant="outline"

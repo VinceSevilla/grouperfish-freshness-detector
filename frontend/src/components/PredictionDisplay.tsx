@@ -36,12 +36,12 @@ export function PredictionDisplay({ prediction, label, detected }: PredictionDis
   if (!detected) {
     return (
       <Card className="bg-muted/50">
-        <CardHeader>
-          <CardTitle className="text-base">{label}</CardTitle>
-          <CardDescription>Not detected in image</CardDescription>
+        <CardHeader className="p-3 sm:p-6">
+          <CardTitle className="text-sm sm:text-base">{label}</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Not detected in image</CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
+        <CardContent className="p-3 sm:p-6 pt-0 sm:pt-0">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             No {label.toLowerCase()} region was detected. Please upload or capture an image with a clear {label.toLowerCase()} region.
           </p>
         </CardContent>
@@ -52,11 +52,11 @@ export function PredictionDisplay({ prediction, label, detected }: PredictionDis
   if (!prediction) {
     return (
       <Card className="bg-muted/50">
-        <CardHeader>
-          <CardTitle className="text-base">{label}</CardTitle>
+        <CardHeader className="p-3 sm:p-6">
+          <CardTitle className="text-sm sm:text-base">{label}</CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Processing...</p>
+        <CardContent className="p-3 sm:p-6 pt-0 sm:pt-0">
+          <p className="text-xs sm:text-sm text-muted-foreground">Processing...</p>
         </CardContent>
       </Card>
     )
@@ -66,13 +66,13 @@ export function PredictionDisplay({ prediction, label, detected }: PredictionDis
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{label}</CardTitle>
-        <CardDescription>Freshness Classification</CardDescription>
+      <CardHeader className="p-3 sm:p-6">
+        <CardTitle className="text-sm sm:text-base">{label}</CardTitle>
+        <CardDescription className="text-xs sm:text-sm">Freshness Classification</CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className={`p-4 rounded-lg border-2 ${colorClass} text-center`}>
-          <p className="font-bold text-lg">{formatClassName(prediction.class)}</p>
+      <CardContent className="p-3 sm:p-6 pt-0 sm:pt-0">
+        <div className={`p-3 sm:p-4 rounded-lg border-2 ${colorClass} text-center`}>
+          <p className="font-bold text-base sm:text-lg">{formatClassName(prediction.class)}</p>
         </div>
       </CardContent>
     </Card>
