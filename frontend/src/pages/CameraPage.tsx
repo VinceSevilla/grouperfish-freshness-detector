@@ -298,6 +298,8 @@ export function CameraPage() {
                   prediction={predictions.integrated_prediction}
                   label="Overall Fish"
                   detected={true}
+                  eyePrediction={predictions.eye_prediction}
+                  gillPrediction={predictions.gill_prediction}
                 />
               )}
 

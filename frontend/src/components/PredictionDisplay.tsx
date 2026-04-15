@@ -5,6 +5,8 @@ interface PredictionDisplayProps {
   prediction: Prediction | null
   label: string
   detected: boolean
+  eyePrediction?: Prediction | null
+  gillPrediction?: Prediction | null
 }
 
 function getColorForClass(freshness: string): string {
@@ -32,7 +34,7 @@ function formatClassName(className: string): string {
 
 
 
-export function PredictionDisplay({ prediction, label, detected }: PredictionDisplayProps) {
+export function PredictionDisplay({ prediction, label, detected, eyePrediction = null, gillPrediction = null }: PredictionDisplayProps) {
   if (!detected) {
     return (
       <Card className="bg-muted/50">
@@ -71,10 +73,89 @@ export function PredictionDisplay({ prediction, label, detected }: PredictionDis
         <CardDescription className="text-xs sm:text-sm">Freshness Classification</CardDescription>
       </CardHeader>
       <CardContent className="p-3 sm:p-6 pt-0 sm:pt-0">
-        <div className={`p-3 sm:p-4 rounded-lg border-2 ${colorClass} text-center`}>
+        <div className={`p-3 sm:p-4 rounded-lg border-2 ${colorClass} text-center mb-4`}>
           <p className="font-bold text-base sm:text-lg">{formatClassName(prediction.class)}</p>
+          {label !== 'Overall Fish' && (
+            <p className="text-xs sm:text-sm mt-1 opacity-90">
+              Confidence: {(prediction.confidence * 100).toFixed(1)}%
+            </p>
+          )}
         </div>
+
+        {label === 'Overall Fish' && eyePrediction && gillPrediction ? (
+          // Overall Fish with explanation
+          <div className="space-y-3">
+            <p className="text-xs sm:text-sm">
+              <span className="font-semibold">Eye:</span> {eyePrediction.class.replace('_', ' ')} {' '} | {' '}
+              <span className="font-semibold">Gill:</span> {gillPrediction.class.replace('_', ' ')}
+            </p>
+            
+            <div className="bg-muted/50 rounded-lg p-3 text-xs sm:text-sm">
+              <p className="font-semibold mb-2">How result determined:</p>
+              <p className="leading-relaxed text-muted-foreground mb-2">
+                System selects the <span className="font-semibold text-foreground">worse (more severe)</span> prediction.
+              </p>
+              <p className="text-foreground font-medium text-xs">
+                {(() => {
+                  const severityMap: Record<string, number> = {
+                    fresh: 0,
+                    less_fresh: 1,
+                    starting_to_rot: 2,
+                    rotten: 3
+                  }
+                  const eyeSeverity = severityMap[eyePrediction.class.toLowerCase()] ?? -1
+                  const gillSeverity = severityMap[gillPrediction.class.toLowerCase()] ?? -1
+                  const selectedSource = eyeSeverity >= gillSeverity ? 'Eye' : 'Gill'
+                  const selectedConfidence = selectedSource === 'Eye' ? eyePrediction.confidence : gillPrediction.confidence
+                  return `${selectedSource} selected: ${prediction.class.replace('_', ' ')} (${(selectedConfidence * 100).toFixed(1)}%)`
+                })()}
+              </p>
+            </div>
+          </div>
+        ) : (
+          // Eye/Gill with confidence breakdown
+          <div className="space-y-2">
+            <p className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2">Confidence by Class:</p>
+            {['fresh', 'less_fresh', 'starting_to_rot', 'rotten']
+              .map((className) => (
+                <div key={className} className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs sm:text-sm font-medium">
+                        {formatClassName(className)}
+                      </span>
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {((prediction.probabilities[className] || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${getColorForBarClass(className)}`}
+                        style={{ width: `${(prediction.probabilities[className] || 0) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
+}
+
+function getColorForBarClass(className: string): string {
+  const normalized = className.toLowerCase()
+  switch (normalized) {
+    case 'fresh':
+      return 'bg-green-500 dark:bg-green-400'
+    case 'less_fresh':
+      return 'bg-yellow-500 dark:bg-yellow-400'
+    case 'starting_to_rot':
+      return 'bg-orange-500 dark:bg-orange-400'
+    case 'rotten':
+      return 'bg-red-500 dark:bg-red-400'
+    default:
+      return 'bg-gray-500 dark:bg-gray-400'
+  }
 }

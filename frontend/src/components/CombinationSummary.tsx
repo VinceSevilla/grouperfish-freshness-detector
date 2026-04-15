@@ -129,8 +129,30 @@ export function CombinationSummary({ eyePrediction, gillPrediction }: Combinatio
         <CardDescription className="text-xs sm:text-sm">Summary based on both eye and gill analysis</CardDescription>
       </CardHeader>
       <CardContent className="p-3 sm:p-6 pt-0 sm:pt-0">
-        <div className={`p-3 sm:p-4 rounded-lg border-2 ${colorClass}`}>
+        <div className={`p-3 sm:p-4 rounded-lg border-2 ${colorClass} mb-4`}>
           <p className="text-xs sm:text-sm leading-relaxed">{summary}</p>
+        </div>
+
+        {/* Confidence comparison */}
+        <div className="grid grid-cols-2 gap-3 text-xs sm:text-sm">
+          <div className="bg-muted/50 rounded-lg p-2 sm:p-3">
+            <p className="font-semibold mb-1">Eye Confidence</p>
+            <p className="text-lg font-bold text-green-600 dark:text-green-400">
+              {(eyePrediction.confidence * 100).toFixed(1)}%
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {eyePrediction.class.replace('_', ' ')}
+            </p>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-2 sm:p-3">
+            <p className="font-semibold mb-1">Gill Confidence</p>
+            <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+              {(gillPrediction.confidence * 100).toFixed(1)}%
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {gillPrediction.class.replace('_', ' ')}
+            </p>
+          </div>
         </div>
       </CardContent>
     </Card>
