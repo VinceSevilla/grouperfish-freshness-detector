@@ -307,11 +307,11 @@ export function UploadPage() {
           {predictions?.annotated_image && (
             <div className="text-center">
               <h3 className="text-base sm:text-lg font-semibold mb-4">Detected Regions</h3>
-              <div className="bg-muted rounded-lg p-3 sm:p-4 overflow-x-auto">
+              <div className="bg-muted rounded-lg p-2 sm:p-4 flex justify-center">
                 <img
                   src={`data:image/png;base64,${predictions.annotated_image}`}
                   alt="Annotated Detection"
-                  className="w-full max-w-sm sm:max-w-lg h-auto mx-auto rounded shadow-md"
+                  className="w-full max-w-xs sm:max-w-sm md:max-w-lg h-auto rounded shadow-md"
                 />
               </div>
             </div>

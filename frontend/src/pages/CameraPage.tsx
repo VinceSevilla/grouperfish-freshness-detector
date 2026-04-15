@@ -248,12 +248,12 @@ export function CameraPage() {
           {/* Annotated Image */}
           {annotatedImage && (
             <div className="text-center">
-              <h3 className="text-lg font-semibold mb-4">Detected Regions</h3>
-              <div className="bg-muted rounded-lg p-4">
+              <h3 className="text-base sm:text-lg font-semibold mb-4">Detected Regions</h3>
+              <div className="bg-muted rounded-lg p-2 sm:p-4 flex justify-center">
                 <img
                   src={annotatedImage}
                   alt="Annotated Detection"
-                  className="max-w-lg h-auto mx-auto rounded shadow-md"
+                  className="w-full max-w-xs sm:max-w-sm md:max-w-lg h-auto rounded shadow-md"
                 />
               </div>
             </div>
